@@ -1,0 +1,10 @@
+{
+  "botDataText": "New bot data",
+  "parsedBotsCount": 5,
+  "totalGridProfitEUR": 200,
+  "totalGridProfitUSDC": 220,
+  "closedBotsConfig": {
+    "totalGridProfitEUR": 100,
+    "totalGridProfitUSDC": 110
+  }
+}

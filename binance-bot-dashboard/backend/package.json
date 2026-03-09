@@ -1,0 +1,15 @@
+{
+  "name": "binance-bot-backend",
+  "version": "1.0.0",
+  "description": "Backend for Binance Grid Bot Dashboard - fetches exchange rates from Binance API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.6.2",
+    "cors": "^2.8.5",
+    "express": "^4.18.2"
+  }
+}
