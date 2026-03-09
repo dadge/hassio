@@ -1,6 +1,6 @@
 {
   "configVersion": 1,
-  "timestamp": 1773059532598,
+  "timestamp": 1773067799881,
   "index": "/index.html",
   "assetGroups": [
     {
@@ -13,7 +13,7 @@
       "urls": [
         "/favicon.ico",
         "/index.html",
-        "/main-CHAMT3YO.js",
+        "/main-MAPNLAU4.js",
         "/manifest.webmanifest",
         "/styles-MEGOVFX4.css"
       ],
@@ -52,8 +52,8 @@
     "/icons/icon-72x72.png": "aa88a6096bd973be7f6d7a5489bfa6bc2463f8c4",
     "/icons/icon-96x96.png": "7fb8f59c30ce2ff12c700321a0b39e14b3dc8f95",
     "/icons/icon.svg": "726d6d012c395eb357feb5f99702e30102faf1cb",
-    "/index.html": "5c73890b579af07aa0456b829fd6b87c22a99b0b",
-    "/main-CHAMT3YO.js": "ff60507c7353bfb0a43bab0eaf34308f7c2ace7b",
+    "/index.html": "986fc32b4cdf9431d6469a08e9ab6667b1fee501",
+    "/main-MAPNLAU4.js": "5b1872ec616a852faef3ceea22b4216b7a67af2b",
     "/manifest.webmanifest": "929caece6256aa2d513d35550218db47a0f302b2",
     "/styles-MEGOVFX4.css": "7298f6c611962fa788ce1032d1ea8d4895fbccbe"
   },

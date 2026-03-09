@@ -25,6 +25,10 @@ else
     echo "Password protection: disabled"
 fi
 
+# Ensure base href is relative for Home Assistant ingress compatibility
+# This is a safety fallback - the build should already have "./" as base href
+sed -i 's|<base href="/">|<base href="./">|g' /usr/share/nginx/html/index.html 2>/dev/null || true
+
 # Generate config.js for frontend
 cat > /usr/share/nginx/html/assets/config.js << EOF
 window.BINANCE_CONFIG = {
