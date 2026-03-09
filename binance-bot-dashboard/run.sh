@@ -45,10 +45,10 @@ echo "Configuration loaded from Home Assistant."
 export BINANCE_API_KEY
 export BINANCE_SECRET_KEY
 export MODE
-export DB_PATH="/data/botdata.sqlite"
+export DATA_DIR="/data"
 
 echo "Starting supervisor (nginx + Node.js backend)..."
 echo "Backend will run in '$MODE' mode"
-echo "Database will be stored in '/data'"
+echo "Database will be stored in '$DATA_DIR'"
 
 exec /usr/bin/supervisord -c /etc/supervisord.conf
