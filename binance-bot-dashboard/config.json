@@ -1,0 +1,33 @@
+{
+  "name": "Binance Grid Bot Dashboard",
+  "version": "1.0.0",
+  "slug": "binance-bot-dashboard",
+  "description": "Dashboard pour suivre les profits des Grid Bots Binance en EUR et USDC",
+  "arch": ["amd64", "aarch64", "armv7"],
+  "url": "https://github.com/dadge/binance-bot-app",
+  "startup": "application",
+  "boot": "auto",
+  "ports": {
+    "4201/tcp": 4201
+  },
+  "ports_description": {
+    "4201/tcp": "Interface web du dashboard"
+  },
+  "host_network": false,
+  "options": {
+    "binance_api_key": "",
+    "binance_secret_key": "",
+    "mode": "live",
+    "password": ""
+  },
+  "schema": {
+    "binance_api_key": "str?",
+    "binance_secret_key": "password?",
+    "mode": "list(mock|live)?",
+    "password": "password?"
+  },
+  "ingress": true,
+  "ingress_port": 4201,
+  "panel_icon": "mdi:chart-line",
+  "panel_title": "Binance Bots"
+}
