@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016
 # ==============================================================================
 # Regression tests for the add-on entrypoint (freqtrade_okx/rootfs/run.sh).
 #
@@ -29,7 +30,13 @@ done
 fails=0
 green() { printf '  \033[32mok\033[0m   %s\n' "$1"; }
 red()   { printf '  \033[31mFAIL\033[0m %s\n' "$1"; fails=$((fails + 1)); }
-check() { [[ "$2" == "0" ]] && green "$1" || red "$1"; }
+check() {
+    if [[ "$2" == "0" ]]; then
+        green "$1"
+    else
+        red "$1"
+    fi
+}
 has()   { grep -Fq -- "$2" <<<"$1" && echo 0 || echo 1; }
 hasnt() { grep -Fq -- "$2" <<<"$1" && echo 1 || echo 0; }
 scenario() { printf '\n\033[1;34m%s\033[0m\n' "$*"; }
@@ -45,6 +52,7 @@ DEFAULT_OPTIONS='{
 
 # ------------------------------------------------------------------ sandbox --
 # Canned OKX ticker; every Supervisor/HA call fails, as it would outside HAOS.
+# shellcheck disable=SC2016
 CURL_DEFAULT='#!/usr/bin/env bash
 for a in "$@"; do case "$a" in http*) url="$a";; esac; done
 case "$url" in
@@ -53,7 +61,7 @@ case "$url" in
 esac'
 
 setup() {
-    rm -rf "$ROOT"/*
+    rm -rf "${ROOT:?}"/*
     mkdir -p "$ROOT/data" "$ROOT/etc/nginx" "$ROOT/bin" "$ROOT/defaults"
     cp -r "$DEFAULTS/." "$ROOT/defaults/"
     jq -n "$DEFAULT_OPTIONS" > "$ROOT/data/options.json"
