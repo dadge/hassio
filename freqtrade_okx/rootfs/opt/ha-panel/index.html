@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Freqtrade</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --text: #1c1e21; --muted: #6b7280;
+    --border: #e5e7eb; --green: #16a34a; --red: #dc2626; --blue: #2563eb;
+    --amber: #d97706;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111318; --card: #1c1f26; --text: #e8eaed; --muted: #9aa0a6;
+      --border: #2d313a; --green: #34d399; --red: #f87171; --blue: #60a5fa;
+      --amber: #fbbf24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 16px; }
+  .wrap { max-width: 900px; margin: 0 auto; display: grid; gap: 12px; }
+  .banner { border-radius: 10px; padding: 10px 16px; font-weight: 700; letter-spacing: .04em; text-align: center; color: #fff; }
+  .banner.dry { background: var(--blue); }
+  .banner.live { background: var(--red); }
+  .banner.off { background: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .kpi .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .kpi .value { font-size: 20px; font-weight: 600; margin-top: 2px; }
+  .pos { color: var(--green); } .neg { color: var(--red); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .tablebox { overflow-x: auto; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  button { border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 8px; padding: 8px 14px; font-weight: 600; cursor: pointer; }
+  button:hover { border-color: var(--blue); }
+  button.danger:hover { border-color: var(--red); color: var(--red); }
+  .muted { color: var(--muted); }
+  .err { color: var(--red); font-weight: 600; }
+  h2 { font-size: 14px; margin: 0 0 8px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  footer { color: var(--muted); font-size: 12px; }
+  code { background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="banner" class="banner off">CONNECTING…</div>
+
+  <div class="card">
+    <div class="grid">
+      <div class="kpi"><div class="label">State</div><div class="value" id="k-state">–</div></div>
+      <div class="kpi"><div class="label">Open trades</div><div class="value" id="k-open">–</div></div>
+      <div class="kpi"><div class="label">Closed profit</div><div class="value" id="k-profit">–</div></div>
+      <div class="kpi"><div class="label">Win rate</div><div class="value" id="k-winrate">–</div></div>
+      <div class="kpi"><div class="label">Strategy</div><div class="value" id="k-strategy" style="font-size:15px">–</div></div>
+      <div class="kpi"><div class="label">Version</div><div class="value" id="k-version" style="font-size:15px">–</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Controls</h2>
+    <div class="actions">
+      <button onclick="cmd('start')">▶ Start</button>
+      <button class="danger" onclick="cmd('stop')">⏸ Stop</button>
+      <button onclick="cmd('reload_config')">↻ Reload config</button>
+      <button onclick="refresh()">⟳ Refresh</button>
+    </div>
+    <div id="cmdmsg" class="muted" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Open trades</h2>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>Pair</th><th>Opened</th><th>Rate</th><th>Current</th><th>Profit</th><th>Stake</th></tr></thead>
+        <tbody id="trades"><tr><td colspan="6" class="muted">–</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>
+    Lightweight control panel served through Home Assistant ingress.
+    For the full <b>FreqUI</b> interface, expose port <code>8080</code> in the
+    add-on's Network settings and open <code>http://&lt;ha-host&gt;:&lt;port&gt;</code>
+    (login with the <code>api_username</code> / <code>api_password</code> options).
+    FreqUI itself cannot run under ingress — see the add-on documentation.
+  </footer>
+</div>
+
+<script>
+"use strict";
+// The ingress path is dynamic (/api/hassio_ingress/<token>/), so every request
+// is built from the current directory rather than hard-coded. nginx proxies
+// proxy/* to the Freqtrade REST API and injects auth server-side; access to
+// this page is gated by Home Assistant's own login.
+const BASE = location.pathname.replace(/[^/]*$/, '');   // .../  (keeps the token)
+const api = (path, opts) => fetch(BASE + 'proxy/api/v1/' + path, opts).then(r => {
+  if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+  return r.json();
+});
+
+const $ = id => document.getElementById(id);
+const fmt = (v, d = 2) => (v === null || v === undefined || isNaN(v)) ? '–' : Number(v).toFixed(d);
+
+async function refresh() {
+  try {
+    const cfg = await api('show_config');
+    const banner = $('banner');
+    if (cfg.dry_run) {
+      banner.className = 'banner dry';
+      banner.textContent = 'DRY-RUN MODE — simulated trading, no real orders';
+    } else {
+      banner.className = 'banner live';
+      banner.textContent = '⚠ LIVE MODE — trading real money on OKX ⚠';
+    }
+    $('k-state').textContent = cfg.state || '–';
+    $('k-strategy').textContent = cfg.strategy || '–';
+    $('k-version').textContent = cfg.version || '–';
+
+    const [profit, count, status] = await Promise.all([
+      api('profit'), api('count'), api('status').catch(() => []),
+    ]);
+    $('k-open').textContent = (count.current ?? 0) + ' / ' + (count.max ?? '–');
+    const p = $('k-profit');
+    const pc = profit.profit_closed_percent_sum;
+    p.textContent = fmt(profit.profit_closed_coin) + ' USDT (' + fmt(pc) + '%)';
+    p.className = 'value ' + ((profit.profit_closed_coin ?? 0) >= 0 ? 'pos' : 'neg');
+    $('k-winrate').textContent = profit.trade_count
+      ? fmt(100 * (profit.winning_trades ?? 0) / Math.max(1, (profit.winning_trades ?? 0) + (profit.losing_trades ?? 0)), 1) + '% of ' + profit.trade_count
+      : 'no trades yet';
+
+    const tbody = $('trades');
+    if (!Array.isArray(status) || status.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="muted">No open trades</td></tr>';
+    } else {
+      tbody.innerHTML = status.map(t => {
+        const pr = t.profit_ratio ?? t.current_profit ?? 0;
+        return '<tr><td>' + t.pair + '</td>'
+          + '<td>' + (t.open_date || '').replace('T', ' ').slice(0, 16) + '</td>'
+          + '<td>' + fmt(t.open_rate, 6) + '</td>'
+          + '<td>' + fmt(t.current_rate, 6) + '</td>'
+          + '<td class="' + (pr >= 0 ? 'pos' : 'neg') + '">' + fmt(pr * 100) + '%</td>'
+          + '<td>' + fmt(t.stake_amount) + ' USDT</td></tr>';
+      }).join('');
+    }
+  } catch (e) {
+    $('banner').className = 'banner off';
+    $('banner').textContent = 'BOT UNREACHABLE — ' + e.message + ' (it may still be starting)';
+  }
+}
+
+async function cmd(c) {
+  const msg = $('cmdmsg');
+  if (c === 'stop' && !confirm('Stop the trading bot? Open trades stay open but are no longer managed.')) return;
+  msg.textContent = 'Sending ' + c + '…';
+  try {
+    const res = await api(c, { method: 'POST' });
+    msg.textContent = res.status || JSON.stringify(res);
+  } catch (e) {
+    msg.innerHTML = '<span class="err">Command failed: ' + e.message + '</span>';
+  }
+  setTimeout(refresh, 1000);
+}
+
+refresh();
+setInterval(refresh, 10000);
+</script>
+</body>
+</html>

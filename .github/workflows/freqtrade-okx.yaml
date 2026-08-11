@@ -1,0 +1,45 @@
+name: freqtrade_okx
+
+# Scoped to this add-on so the other add-ons in the repository are unaffected.
+on:
+  push:
+    paths:
+      - "freqtrade_okx/**"
+      - ".github/workflows/freqtrade-okx.yaml"
+  pull_request:
+    paths:
+      - "freqtrade_okx/**"
+      - ".github/workflows/freqtrade-okx.yaml"
+  workflow_dispatch:
+
+jobs:
+  addon-lint:
+    name: Add-on lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Run Home Assistant add-on linter
+        uses: frenck/action-addon-linter@v2
+        with:
+          path: ./freqtrade_okx
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: ./freqtrade_okx
+
+  entrypoint-tests:
+    name: Entrypoint safety tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Run run.sh regression tests
+        run: freqtrade_okx/tests/test_run_sh.sh

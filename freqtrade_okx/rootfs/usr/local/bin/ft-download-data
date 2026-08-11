@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Download OKX 1h candles for the CURRENT dynamic pairlist into /data/user_data.
+# Usage: ft-download-data [days]   (default: 240 ≈ 8 months)
+set -Eeuo pipefail
+DAYS="${1:-240}"
+CFG=/data/config_backtest.json
+[[ -f "$CFG" ]] || { echo "Backtest config not found — start the add-on once first."; exit 1; }
+
+echo ">> Resolving the current VolumePairList (uses live OKX tickers)..."
+PAIRS_JSON="$(freqtrade test-pairlist --config /data/config.json --print-json 2>/dev/null | tail -n 1)"
+echo "$PAIRS_JSON" | jq -e 'type == "array" and length > 0' >/dev/null \
+    || { echo "Could not resolve the pairlist (is OKX reachable?)."; exit 1; }
+echo ">> $(echo "$PAIRS_JSON" | jq 'length') pairs selected."
+
+STATIC_CFG=/data/config_backtest_static.json
+jq --argjson pairs "$PAIRS_JSON" \
+   '.exchange.pair_whitelist = $pairs | .pairlists = [{method: "StaticPairList"}]' \
+   "$CFG" > "$STATIC_CFG"
+
+echo ">> Downloading ${DAYS} days of 1h OHLCV (OKX serves only 100 candles per call — this takes a while)..."
+freqtrade download-data \
+    --config "$STATIC_CFG" \
+    --userdir /data/user_data \
+    --timeframe 1h \
+    --days "$DAYS"
+echo ">> Done. Data stored in /data/user_data/data/."

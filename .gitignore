@@ -9,3 +9,8 @@
 
 # Environment files
 .env
+
+# Python caches (freqtrade_okx strategy/tests)
+__pycache__/
+*.py[cod]
+.pytest_cache/

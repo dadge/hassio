@@ -1,0 +1,8 @@
+# Base the add-on on the official Freqtrade image (pinned monthly stable
+# release). The image is multi-arch, so the same tag works for every
+# architecture. Bump the tag here AND the `version` in config.yaml together;
+# note that every add-on update forces the bot back to dry-run mode.
+build_from:
+  amd64: freqtradeorg/freqtrade:2026.7
+  aarch64: freqtradeorg/freqtrade:2026.7
+  armv7: freqtradeorg/freqtrade:2026.7

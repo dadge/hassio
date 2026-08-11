@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Run the ReboundStrategy unit tests inside the add-on container.
+set -Eeuo pipefail
+TESTS=/data/user_data/tests
+[[ -d "$TESTS" ]] || TESTS=/defaults/tests
+if python3 -c 'import pytest' 2>/dev/null; then
+    exec python3 -m pytest "$TESTS" -q
+fi
+exec python3 "$TESTS/test_rebound_strategy.py"

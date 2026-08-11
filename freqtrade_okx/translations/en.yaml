@@ -1,0 +1,63 @@
+---
+configuration:
+  mode:
+    name: Trading mode
+    description: >-
+      dry-run = simulated trading (default, safe). live = REAL money on your
+      OKX account — also requires 'I understand live trading'. Forced back to
+      dry-run after every add-on update.
+  i_understand_live_trading:
+    name: I understand live trading
+    description: >-
+      Explicit confirmation for live mode. The bot trades real funds and the
+      entire allocated budget can be lost.
+  okx_environment:
+    name: OKX environment
+    description: >-
+      'okx' for okx.com accounts, 'myokx' if you registered on my.okx.com
+      (OKX EAA — common for EU users).
+  okx_api_key:
+    name: OKX API key
+    description: Create a trade-only key (no withdrawal!) with an IP allowlist.
+  okx_api_secret:
+    name: OKX API secret
+    description: Secret of the trade-only API key.
+  okx_api_passphrase:
+    name: OKX API passphrase
+    description: The passphrase you chose when creating the API key.
+  stake_amount_eur:
+    name: Stake per trade (EUR)
+    description: Converted to USDT at startup using the live OKX EUR/USDT rate.
+  max_total_exposure_eur:
+    name: Max total exposure (EUR)
+    description: Cap on the total capital the bot may use, converted to USDT.
+  max_open_trades:
+    name: Max open trades
+    description: Maximum number of simultaneous positions.
+  dry_run_wallet_usdt:
+    name: Dry-run wallet (USDT)
+    description: Simulated balance used in dry-run mode.
+  pairlist_min_volume_usdt:
+    name: Min 24h pair volume (USDT)
+    description: Pairs below this 24h quote volume are never traded.
+  api_username:
+    name: FreqUI / API username
+    description: Login for FreqUI and the REST API.
+  api_password:
+    name: FreqUI / API password
+    description: >-
+      Leave empty to auto-generate one (stored in /data/.addon/api_password).
+  notifications_enabled:
+    name: Home Assistant notifications
+    description: Send trade/bot events as HA notifications.
+  notify_service:
+    name: Notify service
+    description: "HA notify service to call, e.g. notify.mobile_app_op15."
+  cors_origins:
+    name: Extra CORS origins
+    description: Only needed when connecting an external FreqUI instance.
+  log_level:
+    name: Log level
+    description: info (default) or debug for verbose Freqtrade logs.
+network:
+  8080/tcp: FreqUI + REST API (optional; needed for full FreqUI and REST sensors)
