@@ -5,16 +5,17 @@ description: >-
   Freqtrade crypto trading bot pre-configured for OKX spot trading with a
   dip-rebound strategy, ingress control panel, FreqUI and HA notifications
 url: https://github.com/dadge/hassio/tree/master/freqtrade_okx
+# armv7 is deliberately absent: Home Assistant dropped support for it in
+# 2025.12, and Freqtrade on a 32-bit ARM board is not a realistic setup.
 arch:
   - amd64
   - aarch64
-  - armv7
 startup: services
-boot: auto
 hassio_api: true
 homeassistant_api: true
+# ingress_port is omitted on purpose: the Supervisor's default is already 8099,
+# which is what nginx listens on inside the container.
 ingress: true
-ingress_port: 8099
 panel_icon: mdi:finance
 panel_title: Freqtrade
 ports:

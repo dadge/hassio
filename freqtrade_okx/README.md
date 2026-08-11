@@ -19,8 +19,8 @@ packaged for Home Assistant OS, pre-configured for **OKX spot trading** with:
 > lost.** Read the Documentation tab — especially *Security* and the
 > *dry-run → backtest → live* workflow — before configuring anything.
 
-Architectures: `amd64`, `aarch64`, `armv7`. The image is built locally on
-first install (based on the official `freqtradeorg/freqtrade` image), which
-takes a few minutes.
+Architectures: `amd64`, `aarch64` (Home Assistant dropped `armv7` support in
+2025.12). The image is built locally on first install (based on the official
+`freqtradeorg/freqtrade` image), which takes a few minutes.
 
 Full documentation: see the **Documentation** tab of this add-on.

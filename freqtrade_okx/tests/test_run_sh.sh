@@ -29,7 +29,7 @@ done
 fails=0
 green() { printf '  \033[32mok\033[0m   %s\n' "$1"; }
 red()   { printf '  \033[31mFAIL\033[0m %s\n' "$1"; fails=$((fails + 1)); }
-check() { [[ "$2" == "0" ]] && green "$1" || red "$1"; }
+check() { if [[ "$2" == "0" ]]; then green "$1"; else red "$1"; fi; }
 has()   { grep -Fq -- "$2" <<<"$1" && echo 0 || echo 1; }
 hasnt() { grep -Fq -- "$2" <<<"$1" && echo 1 || echo 0; }
 scenario() { printf '\n\033[1;34m%s\033[0m\n' "$*"; }
@@ -45,6 +45,9 @@ DEFAULT_OPTIONS='{
 
 # ------------------------------------------------------------------ sandbox --
 # Canned OKX ticker; every Supervisor/HA call fails, as it would outside HAOS.
+# The shim bodies below are single-quoted on purpose: "$@"/"$url" must reach the
+# generated script verbatim rather than expand here.
+# shellcheck disable=SC2016
 CURL_DEFAULT='#!/usr/bin/env bash
 for a in "$@"; do case "$a" in http*) url="$a";; esac; done
 case "$url" in
@@ -53,7 +56,7 @@ case "$url" in
 esac'
 
 setup() {
-    rm -rf "$ROOT"/*
+    rm -rf "${ROOT:?}"/*
     mkdir -p "$ROOT/data" "$ROOT/etc/nginx" "$ROOT/bin" "$ROOT/defaults"
     cp -r "$DEFAULTS/." "$ROOT/defaults/"
     jq -n "$DEFAULT_OPTIONS" > "$ROOT/data/options.json"
@@ -174,7 +177,9 @@ check "retried before giving up"           "$(has "$OUT" "attempt 11/12")"
 check "no config written"                  "$([[ ! -f $ROOT/data/config.json ]] && echo 0 || echo 1)"
 
 scenario "OKX ticker down, ECB reachable: documented fallback"
-setup; shim curl '#!/usr/bin/env bash
+setup
+# shellcheck disable=SC2016  # shim body must stay unexpanded
+shim curl '#!/usr/bin/env bash
 for a in "$@"; do case "$a" in http*) url="$a";; esac; done
 case "$url" in
   *frankfurter*) echo "{\"rates\":{\"USD\":1.09}}"; exit 0 ;;
@@ -185,7 +190,9 @@ check "names the fallback source"          "$(has "$OUT" "using the ECB EUR/USD 
 check "20 EUR at 1.09 -> 21.80 USDT"       "$([[ $(cfg .stake_amount) == 21.80 ]] && echo 0 || echo 1)"
 
 scenario "implausible rate responses are rejected"
-setup; shim curl '#!/usr/bin/env bash
+setup
+# shellcheck disable=SC2016  # shim body must stay unexpanded
+shim curl '#!/usr/bin/env bash
 for a in "$@"; do case "$a" in http*) url="$a";; esac; done
 case "$url" in
   *EUR-USDT*) echo "{\"code\":\"1\",\"msg\":\"error\",\"data\":[]}"; exit 0 ;;
