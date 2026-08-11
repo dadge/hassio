@@ -1,0 +1,62 @@
+name: Freqtrade OKX Rebound Bot
+version: "1.0.0"
+slug: freqtrade_okx
+description: >-
+  Freqtrade crypto trading bot pre-configured for OKX spot trading with a
+  dip-rebound strategy, ingress control panel, FreqUI and HA notifications
+url: https://github.com/dadge/hassio/tree/master/freqtrade_okx
+arch:
+  - amd64
+  - aarch64
+  - armv7
+startup: services
+boot: auto
+hassio_api: true
+homeassistant_api: true
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:finance
+panel_title: Freqtrade
+ports:
+  8080/tcp: null
+ports_description:
+  8080/tcp: >-
+    FreqUI + Freqtrade REST API (optional — leave empty to keep it LAN-hidden;
+    set e.g. 8080 to use the full FreqUI web interface)
+options:
+  mode: dry-run
+  i_understand_live_trading: false
+  okx_environment: okx
+  okx_api_key: ""
+  okx_api_secret: ""
+  okx_api_passphrase: ""
+  stake_amount_eur: 20.0
+  max_total_exposure_eur: 100.0
+  max_open_trades: 3
+  dry_run_wallet_usdt: 1000.0
+  pairlist_min_volume_usdt: 1000000.0
+  api_username: freqtrade
+  api_password: ""
+  notifications_enabled: true
+  notify_service: notify.mobile_app_op15
+  cors_origins: []
+  log_level: info
+schema:
+  mode: list(dry-run|live)
+  i_understand_live_trading: bool
+  okx_environment: list(okx|myokx)
+  okx_api_key: password?
+  okx_api_secret: password?
+  okx_api_passphrase: password?
+  stake_amount_eur: float(1,)
+  max_total_exposure_eur: float(1,)
+  max_open_trades: int(1,20)
+  dry_run_wallet_usdt: float(10,)
+  pairlist_min_volume_usdt: float(0,)
+  api_username: str
+  api_password: password?
+  notifications_enabled: bool
+  notify_service: str
+  cors_origins:
+    - str
+  log_level: list(info|debug)

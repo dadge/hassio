@@ -1,0 +1,5 @@
+# The freqtrade_okx scripts are executed inside a Linux container: CRLF endings
+# would break the shebang ("bad interpreter"). Force LF regardless of the
+# developer's platform or core.autocrlf setting.
+freqtrade_okx/** text=auto eol=lf
+freqtrade_okx/**/*.png binary

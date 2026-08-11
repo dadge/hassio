@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Hyperopt ReboundStrategy's buy-space parameters on downloaded data.
+# Usage: ft-hyperopt [epochs] [timerange]
+set -Eeuo pipefail
+STATIC_CFG=/data/config_backtest_static.json
+[[ -f "$STATIC_CFG" ]] || { echo "Run ft-download-data first."; exit 1; }
+
+EPOCHS="${1:-100}"
+TIMERANGE="${2:-$(date -d '6 months ago' +%Y%m%d)-}"
+echo ">> Hyperopting ReboundStrategy (${EPOCHS} epochs, timerange ${TIMERANGE})..."
+freqtrade hyperopt \
+    --config "$STATIC_CFG" \
+    --userdir /data/user_data \
+    --strategy ReboundStrategy \
+    --hyperopt-loss SharpeHyperOptLoss \
+    --spaces buy \
+    --timeframe 1h \
+    --timerange "$TIMERANGE" \
+    --epochs "$EPOCHS"
+echo ">> Apply results by copying the best parameters into"
+echo "   /data/user_data/strategies/ReboundStrategy.py (or a .json parameter file)."

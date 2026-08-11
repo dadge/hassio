@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Backtest ReboundStrategy on previously downloaded data (see ft-download-data).
+# Usage: ft-backtest [timerange]   default: last ~6 months, e.g. 20250201-
+set -Eeuo pipefail
+STATIC_CFG=/data/config_backtest_static.json
+[[ -f "$STATIC_CFG" ]] || { echo "Run ft-download-data first (it also builds the static pairlist config)."; exit 1; }
+
+TIMERANGE="${1:-$(date -d '6 months ago' +%Y%m%d)-}"
+echo ">> Backtesting ReboundStrategy, timerange ${TIMERANGE}..."
+freqtrade backtesting \
+    --config "$STATIC_CFG" \
+    --userdir /data/user_data \
+    --strategy ReboundStrategy \
+    --timeframe 1h \
+    --timerange "$TIMERANGE" \
+    --export trades
+
+cat <<'EOF'
+
+>> How to read the summary above:
+   * "Win  Draw  Loss  Win%"  — win rate. Rebound strategies typically land
+     50-70% with the modest default +5% ROI target; a high target tanks this.
+   * "Profit factor"          — gross wins / gross losses. > 1.2 is workable,
+     < 1.0 loses money.
+   * "Max % of account underwater (Absolute Drawdown)" — worst peak-to-valley.
+     Compare it against what you can stomach before ever going live.
+   * Also check "Exit Reason Stats": if most profit comes from `roi` and
+     stop_loss exits stay contained, the edge is behaving as designed.
+EOF
