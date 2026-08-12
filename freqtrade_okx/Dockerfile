@@ -13,6 +13,17 @@ FROM ${BUILD_FROM}
 USER root
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# The base image installs Freqtrade with `pip install -e . --user` as ftuser,
+# i.e. into /home/ftuser/.local with an *editable* install: importing it needs
+# the .pth hooks that Python only evaluates for the user site directory. As
+# root that directory would be /root/.local, so `freqtrade` would be on PATH
+# but `import freqtrade` would fail with ModuleNotFoundError.
+#
+# PYTHONUSERBASE (not PYTHONPATH) is the right lever: it moves the user site
+# itself, so site.py runs addsitedir() on it and the editable hooks register.
+# It applies to run.sh, the ft-* helpers and any `docker exec` alike.
+ENV PYTHONUSERBASE=/home/ftuser/.local
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends nginx jq curl ca-certificates \
     && apt-get clean \
@@ -23,6 +34,12 @@ RUN apt-get update \
 
 COPY rootfs/ /
 RUN chmod a+x /run.sh /usr/local/bin/ft-*
+
+# Fail the BUILD if Freqtrade is not importable as root, rather than shipping
+# an image whose add-on dies at startup. Also pins down that the CLI works.
+RUN whoami | grep -qx root \
+    && python3 -c "import freqtrade; print('freqtrade importable as root:', freqtrade.__file__)" \
+    && freqtrade --version
 
 ARG BUILD_ARCH
 ARG BUILD_VERSION

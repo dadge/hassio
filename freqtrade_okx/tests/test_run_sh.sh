@@ -66,7 +66,9 @@ setup() {
     # nginx: accept anything (the container smoke test does the real -t check).
     shim nginx '#!/usr/bin/env bash
 exit 0'
+    # shellcheck disable=SC2016  # shim body must stay unexpanded
     shim freqtrade '#!/usr/bin/env bash
+case "$1" in --version) echo "freqtrade 2026.7"; exit 0 ;; esac
 echo "FREQTRADE-ARGS: $*"'
     sed -e "s#^OPTIONS_FILE=/data/options.json#OPTIONS_FILE=$ROOT/data/options.json#" \
         -e "s#^STATE_DIR=/data/.addon#STATE_DIR=$ROOT/data/.addon#" \
@@ -143,6 +145,22 @@ set_opt '.mode = "live" | .i_understand_live_trading = true
          | .okx_api_key = "k" | .okx_api_secret = "s" | .okx_api_passphrase = "p"'
 run_addon
 check "logs the transition"                "$(has "$OUT" "Mode changed: dry-run -> live")"
+
+# Regression: the base image installs freqtrade into ftuser's user site with an
+# editable install. Running as root without PYTHONUSERBASE put the CLI on PATH
+# but left the package unimportable, so the add-on only died after the rate
+# lookup, with a raw ModuleNotFoundError traceback.
+scenario "a broken freqtrade install is reported before anything else"
+setup
+shim freqtrade '#!/usr/bin/env bash
+echo "ModuleNotFoundError: No module named '"'"'freqtrade'"'"'" >&2
+exit 1'
+run_addon
+check "exits non-zero"                     "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
+check "names it a packaging fault"         "$(has "$OUT" "add-on packaging fault")"
+check "surfaces the underlying error"      "$(has "$OUT" "No module named")"
+check "fails before the rate lookup"       "$(hasnt "$OUT" "EUR/USDT rate")"
+check "no config written"                  "$([[ ! -f $ROOT/data/config.json ]] && echo 0 || echo 1)"
 
 scenario "invalid options fail fast with a clear message"
 setup; set_opt '.mode = "paper"'; run_addon

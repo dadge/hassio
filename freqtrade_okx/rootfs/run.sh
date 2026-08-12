@@ -78,6 +78,16 @@ ha_notify() {  # $1 = title, $2 = message
 [[ "$NOTIFY_SERVICE" == *.* ]] || fatal "notify_service must look like 'notify.mobile_app_xxx' (got '$NOTIFY_SERVICE')"
 [[ -n "$API_USERNAME" ]] || fatal "api_username must not be empty"
 
+# Check the bot itself is runnable BEFORE the exchange-rate lookup, so a broken
+# image fails in a second with a clear message instead of after 3 minutes of
+# retries followed by a Python traceback. The base image installs Freqtrade
+# into ftuser's user site (editable install); PYTHONUSERBASE in the Dockerfile
+# makes that importable as root.
+FT_VERSION="$(freqtrade --version 2>&1 | tail -n 1)" || fatal \
+    "Freqtrade is installed but not runnable: ${FT_VERSION:-no output}. \
+This is an add-on packaging fault, not a configuration error — please report it."
+info "Freqtrade: ${FT_VERSION}"
+
 # ---------------------------------------- forced dry-run after add-on update --
 # Requirement: after EVERY add-on update the bot must come back up in dry-run.
 # We detect updates via the image build version and flip the stored option back

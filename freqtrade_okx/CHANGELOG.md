@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.0.2
+
+- **Fix: the add-on started, then crashed with `ModuleNotFoundError: No module
+  named 'freqtrade'`.** The base image installs Freqtrade with
+  `pip install -e . --user` as `ftuser`, so the package lives in that user's
+  site-packages as an editable install. The add-on runs as root (needed for
+  nginx and `/data`), whose user site is `/root/.local` — the `freqtrade`
+  command was on `PATH` but the package was not importable. Fixed with
+  `PYTHONUSERBASE=/home/ftuser/.local`, which relocates the user site so
+  Python evaluates the editable-install hooks. `PYTHONPATH` would *not* work
+  here: it appends to `sys.path` without processing `.pth` files.
+- The image build now fails if Freqtrade is not importable as root, instead of
+  producing an add-on that dies at startup.
+- `run.sh` verifies `freqtrade --version` before the exchange-rate lookup, so
+  a packaging fault is reported in a second with a clear message rather than
+  after three minutes of retries followed by a traceback. The version is
+  logged at startup.
+
 ## 1.0.1
 
 - **Fix: the add-on could not start.** The EUR→USDT rate was read from a
