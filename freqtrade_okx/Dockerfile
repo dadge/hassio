@@ -33,7 +33,8 @@ RUN apt-get update \
 # release (freqtrade/rpc/api_server/ui/installed), so no install-ui step.
 
 COPY rootfs/ /
-RUN chmod a+x /run.sh /usr/local/bin/ft-*
+RUN chmod a+x /run.sh /usr/local/bin/ft-* \
+    && python3 -m py_compile /opt/ha-panel/control.py
 
 # Fail the BUILD if Freqtrade is not importable as root, rather than shipping
 # an image whose add-on dies at startup. Also pins down that the CLI works.

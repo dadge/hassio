@@ -46,5 +46,13 @@ Builds the add-on image, runs the real entrypoint inside it, and has Freqtrade
 validate the generated configuration. Needs Docker and unfiltered internet
 access.
 
+```bash
+python3 freqtrade_okx/tests/test_control_server.py
+```
+
+Covers the panel's backtest control endpoint: input whitelisting, one job at a
+time, and result parsing. Three of its cases need POSIX process groups and are
+skipped (visibly) on Windows.
+
 The strategy's own unit tests need Freqtrade and TA-Lib, so they run inside the
 add-on container via `ft-test-strategy` (see the add-on documentation).

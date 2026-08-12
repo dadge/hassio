@@ -42,6 +42,20 @@
   h2 { font-size: 14px; margin: 0 0 8px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
   footer { color: var(--muted); font-size: 12px; }
   code { background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  input, select { background: var(--bg); color: var(--text); border: 1px solid var(--border);
+                  border-radius: 8px; padding: 7px 9px; font: inherit; }
+  input { width: 7em; }
+  pre.log { background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+            padding: 10px; max-height: 260px; overflow: auto; font-size: 12px;
+            white-space: pre-wrap; word-break: break-word; margin: 10px 0 0; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .badge { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px;
+           border: 1px solid var(--border); }
+  .badge.run { border-color: var(--blue); color: var(--blue); }
+  .badge.ok { border-color: var(--green); color: var(--green); }
+  .badge.bad { border-color: var(--red); color: var(--red); }
 </style>
 </head>
 <body>
@@ -78,6 +92,40 @@
         <tbody id="trades"><tr><td colspan="6" class="muted">–</td></tr></tbody>
       </table>
     </div>
+  </div>
+
+  <div class="card">
+    <h2>Backtesting</h2>
+    <div class="row">
+      <div>
+        <label for="bt-ccy">Quote currency</label>
+        <select id="bt-ccy">
+          <option value="">bot's setting</option>
+          <option value="USDT">USDT</option>
+          <option value="USDC">USDC</option>
+        </select>
+      </div>
+      <div>
+        <label for="bt-days">Days to download</label>
+        <input id="bt-days" type="number" min="1" max="1000" value="240">
+      </div>
+      <div>
+        <label for="bt-range">Timerange (optional)</label>
+        <input id="bt-range" type="text" placeholder="20260201-" style="width:11em">
+      </div>
+      <button id="bt-dl" onclick="job('download')">⬇ Download data</button>
+      <button id="bt-run" onclick="job('backtest')">▶ Run backtest</button>
+      <button id="bt-abort" class="danger" onclick="abortJob()">■ Abort</button>
+      <span id="bt-state" class="badge">idle</span>
+    </div>
+    <div class="hint">
+      Download first (OKX serves 100 candles per request, so 240 days takes a
+      while), then backtest. USDC pairs are young and thin — validating the
+      strategy on USDT usually gives a far more meaningful sample.
+      <b>A backtest proves nothing about the future.</b>
+    </div>
+    <div id="bt-results"></div>
+    <pre class="log" id="bt-log">No job has run yet.</pre>
   </div>
 
   <footer>
@@ -164,7 +212,98 @@ async function cmd(c) {
   setTimeout(refresh, 1000);
 }
 
+// ---------------------------------------------------------------- backtest --
+const ctl = (path, opts) => fetch(BASE + 'control' + path, opts).then(async r => {
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error || (r.status + ' ' + r.statusText));
+  return body;
+});
+
+const pct = v => (v === null || v === undefined) ? '–' : (100 * v).toFixed(2) + '%';
+
+function job(which) {
+  const body = { job: which, stake_currency: $('bt-ccy').value || undefined };
+  if (which === 'download') {
+    body.days = parseInt($('bt-days').value, 10);
+  } else {
+    body.timerange = $('bt-range').value.trim() || undefined;
+  }
+  $('bt-log').textContent = 'Starting ' + which + '…';
+  ctl('/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(pollJob).catch(e => { $('bt-log').textContent = 'Could not start: ' + e.message; });
+}
+
+function abortJob() {
+  if (!confirm('Abort the running job?')) return;
+  ctl('/abort', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    .then(pollJob).catch(e => { $('bt-log').textContent = 'Abort failed: ' + e.message; });
+}
+
+function renderResult(r) {
+  const box = $('bt-results');
+  if (!r) { box.innerHTML = ''; return; }
+  const trades = r.total_trades ?? 0;
+  // Freqtrade reports ratios; a handful of trades is not evidence either way.
+  const thin = trades < 20
+    ? '<div class="hint"><b>Only ' + trades + ' trades</b> — too few to distinguish edge from luck. '
+      + 'Widen the timerange or the pairlist before trusting this.</div>'
+    : '';
+  box.innerHTML =
+    '<div class="grid" style="margin-top:12px">'
+    + kpi('Trades', trades + (r.backtest_days ? ' in ' + r.backtest_days + 'd' : ''))
+    + kpi('Win rate', pct(r.winrate) + (r.wins !== undefined ? ' (' + r.wins + 'W/' + r.losses + 'L)' : ''))
+    + kpi('Profit factor', r.profit_factor === undefined ? '–' : Number(r.profit_factor).toFixed(2),
+          r.profit_factor >= 1.2 ? 'pos' : 'neg')
+    + kpi('Total profit', pct(r.profit_total), (r.profit_total ?? 0) >= 0 ? 'pos' : 'neg')
+    + kpi('Max drawdown', pct(r.max_drawdown_account), 'neg')
+    + kpi('Quote', r.stake_currency || '–')
+    + '</div>' + thin;
+}
+
+function kpi(label, value, cls) {
+  return '<div class="kpi"><div class="label">' + label + '</div>'
+       + '<div class="value ' + (cls || '') + '" style="font-size:17px">' + value + '</div></div>';
+}
+
+let pollTimer = null;
+function pollJob() {
+  clearTimeout(pollTimer);
+  return ctl('/status').then(s => {
+    const badge = $('bt-state');
+    if (s.running) {
+      badge.className = 'badge run';
+      badge.textContent = s.job + ' running…';
+    } else if (s.returncode === 0) {
+      badge.className = 'badge ok';
+      badge.textContent = s.job ? s.job + ' finished' : 'idle';
+    } else if (s.returncode !== null && s.returncode !== undefined) {
+      badge.className = 'badge bad';
+      badge.textContent = s.job + ' failed (exit ' + s.returncode + ')';
+    } else {
+      badge.className = 'badge';
+      badge.textContent = 'idle';
+    }
+    ['bt-dl', 'bt-run'].forEach(id => { $(id).disabled = s.running; });
+    $('bt-abort').disabled = !s.running;
+    if (s.log && s.log.length) {
+      const log = $('bt-log');
+      log.textContent = s.log.join('\n');
+      log.scrollTop = log.scrollHeight;
+    }
+    renderResult(s.result);
+    if (s.running) pollTimer = setTimeout(pollJob, 3000);
+  }).catch(e => {
+    $('bt-state').className = 'badge bad';
+    $('bt-state').textContent = 'control endpoint unreachable';
+    $('bt-log').textContent = e.message;
+  });
+}
+
 refresh();
+pollJob();
 setInterval(refresh, 10000);
 </script>
 </body>

@@ -40,6 +40,7 @@ DEFAULT_OPTIONS='{
   "stake_currency": "USDT",
   "stake_amount_eur": 20.0, "max_total_exposure_eur": 100.0, "max_open_trades": 3,
   "dry_run_wallet": 1000.0, "pairlist_min_volume": 1000000.0,
+  "pairlist_max_spread_percent": 0.5,
   "api_username": "freqtrade", "api_password": "", "notifications_enabled": true,
   "notify_service": "notify.mobile_app_op15", "cors_origins": [], "log_level": "info"
 }'
@@ -79,7 +80,7 @@ echo "FREQTRADE-ARGS: $*"'
         -e "s#^BT_CONFIG=/data/config_backtest.json#BT_CONFIG=$ROOT/data/config_backtest.json#" \
         -e "s#^NGINX_CONF=/etc/nginx/nginx.conf#NGINX_CONF=$ROOT/etc/nginx/nginx.conf#" \
         -e "s#/defaults/#$ROOT/defaults/#g" \
-        -e "s#^ *sleep 15\$#    sleep 0#" \
+        -e "s#^\( *\)sleep [0-9][0-9]*\$#\1sleep 0#" \
         "$RUN_SH" > "$ROOT/run.sh"
     # Guard against a silently ineffective rewrite.
     grep -q "$ROOT/data/options.json" "$ROOT/run.sh" || { echo "path rewrite failed" >&2; exit 2; }
@@ -208,6 +209,28 @@ BLACKLIST="$(jq -r '.exchange.pair_blacklist[]' "$ROOT/data/config.json")"
 for coin in USDT USDC RLUSD USDG USTC DAI FRAX; do
     check "blacklists $coin as a base"     "$(has "$BLACKLIST" "$coin")"
 done
+
+scenario "the spread cap is configurable and validated"
+setup; run_addon
+check "0.5% -> max_spread_ratio 0.005"     "$([[ $(cfg '.pairlists[] | select(.method=="SpreadFilter") | .max_spread_ratio') == 0.005000 ]] && echo 0 || echo 1)"
+setup; set_opt '.pairlist_max_spread_percent = 1.0'; run_addon
+check "1.0% -> max_spread_ratio 0.010"     "$([[ $(cfg '.pairlists[] | select(.method=="SpreadFilter") | .max_spread_ratio') == 0.010000 ]] && echo 0 || echo 1)"
+setup; set_opt '.pairlist_max_spread_percent = 0 | .stake_currency = "USDT"'; run_addon
+check "rejects a zero spread cap"          "$(has "$OUT" "pairlist_max_spread_percent must be between")"
+setup; set_opt '.stake_currency = "USDC" | .pairlist_max_spread_percent = 0.5'; run_addon
+check "warns that USDC + 0.5% starves the whitelist" "$(has "$OUT" "will leave very few pairs")"
+
+# The panel's backtest card needs the control endpoint, but the bot must still
+# start without it — a broken panel feature must never stop trading.
+scenario "a failing control endpoint does not stop the bot"
+setup
+shim python3 '#!/usr/bin/env bash
+exit 1'
+run_addon
+check "bot still starts"                   "$([[ $RC -eq 0 ]] && echo 0 || echo 1)"
+check "warns the card is unavailable"      "$(has "$OUT" "Backtesting card will be unavailable")"
+check "says trading is unaffected"          "$(has "$OUT" "Trading is unaffected")"
+check "freqtrade still launched"           "$(has "$OUT" "FREQTRADE-ARGS")"
 
 scenario "a locally edited strategy is never overwritten"
 setup; run_addon >/dev/null 2>&1

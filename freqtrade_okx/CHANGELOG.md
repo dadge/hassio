@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.0
+
+- **Backtesting from the sidebar panel.** A new Backtesting card downloads
+  data and runs a backtest, showing live progress, the tail of the log, and a
+  summary of the finished run (trades, win rate, profit factor, total profit,
+  max drawdown). It flags a run with fewer than 20 trades as too small to
+  judge. Freqtrade's own backtest API is webserver-mode only, so this is
+  driven by a small control endpoint bound to `127.0.0.1` and reachable only
+  through ingress; every request field is whitelisted before a process is
+  started, and one job runs at a time.
+- `ft-download-data` and `ft-backtest` accept `--stake-currency USDT|USDC`, so
+  the strategy can be validated on liquid USDT history even when the bot is
+  configured to trade USDC.
+- **New option `pairlist_max_spread_percent`** (default 0.5), previously
+  hardcoded. On thin USDC books a 0.5% cap can cut the whitelist to a couple
+  of pairs; the add-on now warns when USDC is combined with a tight cap.
+- If the control endpoint fails to start, the add-on says so and keeps
+  trading — a panel feature must never stop the bot.
+
 ## 1.1.0
 
 - **New option `stake_currency` (`USDT` or `USDC`, default `USDT`).** OKX's

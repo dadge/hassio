@@ -48,6 +48,7 @@ EXPOSURE_EUR="$(opt max_total_exposure_eur)"
 MAX_OPEN_TRADES="$(opt max_open_trades)"
 DRY_WALLET="$(opt dry_run_wallet)"
 MIN_VOLUME="$(opt pairlist_min_volume)"
+MAX_SPREAD_PCT="$(opt pairlist_max_spread_percent)"
 API_USERNAME="$(opt api_username)"
 API_PASSWORD="$(opt api_password)"
 NOTIFY_ENABLED="$(opt notifications_enabled)"
@@ -82,6 +83,8 @@ ha_notify() {  # $1 = title, $2 = message
 # restricts it under MiCA, where USDC is the practical quote currency.
 [[ "$STAKE_CCY" == "USDT" || "$STAKE_CCY" == "USDC" ]] \
     || fatal "Invalid stake_currency '$STAKE_CCY' (must be USDT or USDC)"
+awk "BEGIN{exit !($MAX_SPREAD_PCT > 0 && $MAX_SPREAD_PCT <= 5)}" \
+    || fatal "pairlist_max_spread_percent must be between 0 and 5 (got '$MAX_SPREAD_PCT')"
 
 # Check the bot itself is runnable BEFORE the exchange-rate lookup, so a broken
 # image fails in a second with a clear message instead of after 3 minutes of
@@ -241,6 +244,12 @@ if [[ "$MODE" == "dry-run" ]] && awk "BEGIN{exit !($EXPOSURE_AMT > $DRY_WALLET)}
     info "Capping available_capital to the dry-run wallet (${DRY_WALLET} ${STAKE_CCY})."
 fi
 
+if awk "BEGIN{exit !($MAX_SPREAD_PCT <= 0.5 && \"$STAKE_CCY\" == \"USDC\")}" 2>/dev/null; then
+    warn "stake_currency=USDC with a ${MAX_SPREAD_PCT}% spread cap will leave very few pairs:"
+    warn "  USDC books on OKX are much thinner than USDT ones. Raise"
+    warn "  pairlist_max_spread_percent (0.8-1.0) if the whitelist is nearly empty."
+fi
+
 # ------------------------------------------------------------ user_data dir --
 # Everything stateful (strategies, DB, logs, backtest results, downloaded
 # data) lives under /data/user_data and therefore survives updates/restarts.
@@ -278,6 +287,7 @@ jq -n \
     --argjson stake_amount "$STAKE_AMT" \
     --argjson available_capital "$AVAILABLE_CAPITAL" \
     --argjson min_volume "$MIN_VOLUME" \
+    --argjson max_spread "$(awk "BEGIN{printf \"%.6f\", $MAX_SPREAD_PCT / 100}")" \
     --argjson cors "$CORS_JSON" \
     --arg exchange_name "$OKX_ENV" \
     --arg stake_currency "$STAKE_CCY" \
@@ -342,7 +352,7 @@ jq -n \
             },
             { method: "AgeFilter", min_days_listed: 30 },
             { method: "PriceFilter", low_price_ratio: 0.01 },
-            { method: "SpreadFilter", max_spread_ratio: 0.005 }
+            { method: "SpreadFilter", max_spread_ratio: $max_spread }
         ],
         webhook: {
             enabled: true,
@@ -463,6 +473,14 @@ http {
             add_header Cache-Control "no-store";
             try_files /index.html =404;
         }
+        location /control/ {
+            proxy_pass http://127.0.0.1:8125/;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            # A download or backtest run can take a long time; the panel polls
+            # /control/status, but the initial POST must not time out either.
+            proxy_read_timeout 600s;
+        }
         location /proxy/ {
             proxy_pass http://127.0.0.1:8080/;
             proxy_set_header Authorization "Basic ${BASIC_B64}";
@@ -489,6 +507,26 @@ chmod 600 "$NGINX_CONF"
 nginx -t -c "$NGINX_CONF" >/dev/null 2>&1 || fatal "Generated nginx configuration is invalid (run 'nginx -t' in the container for details)"
 nginx -c "$NGINX_CONF"
 info "nginx started (ingress panel on :8099, notification relay on 127.0.0.1:8124)."
+
+# The panel's Backtesting card drives this: Freqtrade's own backtest API is
+# webserver-mode only, so it cannot be served by the trading bot's API.
+# Probe the endpoint rather than the PID — a process that is alive but not
+# serving would otherwise be reported as healthy. Never fatal: a broken panel
+# feature must not stop the bot from trading.
+python3 /opt/ha-panel/control.py &
+CONTROL_READY="no"
+for _ in $(seq 1 10); do
+    if curl -fsS -m 2 -o /dev/null "http://127.0.0.1:8125/status"; then
+        CONTROL_READY="yes"; break
+    fi
+    sleep 1
+done
+if [[ "$CONTROL_READY" == "yes" ]]; then
+    info "Backtest control endpoint started (127.0.0.1:8125, panel only)."
+else
+    warn "Backtest control endpoint did not come up — the panel's Backtesting card will be unavailable."
+    warn "Trading is unaffected; the ft-* helpers still work from a container shell."
+fi
 
 # ------------------------------------------------------ start notifications --
 LAST_MODE="$(cat "$STATE_DIR/last_mode" 2>/dev/null || echo "")"

@@ -51,6 +51,12 @@ configuration:
     description: >-
       Pairs below this 24h quote volume are never traded. USDC books are much
       thinner than USDT ones, so lower this if you switch.
+  pairlist_max_spread_percent:
+    name: Max bid/ask spread (%)
+    description: >-
+      Pairs whose spread is wider than this are never traded — a wide spread is
+      a cost paid twice, on entry and exit. 0.5 suits USDT books; USDC books
+      are thinner, so 0.8-1.0 may be needed there to get a usable pairlist.
   api_username:
     name: FreqUI / API username
     description: Login for FreqUI and the REST API.

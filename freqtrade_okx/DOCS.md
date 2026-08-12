@@ -62,6 +62,7 @@ a random password is generated once and stored in
 | `max_open_trades` | `3` | Maximum simultaneous positions. |
 | `dry_run_wallet` | `1000` | Simulated wallet (stake currency) for dry-run mode. |
 | `pairlist_min_volume` | `1000000` | Minimum 24h quote volume for a pair to be tradable. Lower it for USDC. |
+| `pairlist_max_spread_percent` | `0.5` | Maximum bid/ask spread. A wide spread is paid twice (entry and exit), so it eats the ROI target. USDC books may need 0.8–1.0 to yield a usable pairlist. |
 | `api_username` / `api_password` | `freqtrade` / auto | Login for FreqUI and the REST API. |
 | `notifications_enabled` | `true` | Master switch for HA notifications. |
 | `notify_service` | `notify.mobile_app_op15` | Any HA notify service (`notify.<something>`). |
@@ -226,9 +227,26 @@ add-on port is bound on the host; adjust host/port if you mapped differently.)
 **Acceptance step: do not enable live mode before you have run at least a
 6-month backtest and reviewed win rate, profit factor and max drawdown.**
 
-Open a shell in the add-on container (SSH add-on → `docker exec -it
-addon_<hash>_freqtrade_okx bash`, find the exact name with `docker ps |
-grep freqtrade`). Three helpers are bundled:
+### From the sidebar panel (no shell needed)
+
+The **Backtesting** card in the ingress panel runs the same helpers for you:
+pick a quote currency, press **Download data**, then **Run backtest**. Progress
+and the tail of the log are shown live, and the finished run is summarised as
+trades / win rate / profit factor / total profit / max drawdown.
+
+The card talks to a small control endpoint inside the add-on
+(`127.0.0.1:8125`, reachable only through ingress, which Home Assistant
+authenticates). It exists because Freqtrade's own backtest API is only served
+in *webserver* mode, which the trading bot is not running in. If the endpoint
+fails to start, the card reports it and trading carries on unaffected.
+
+### From a container shell
+
+Open a shell in the add-on container. The **official Terminal & SSH add-on
+cannot do this** — it has no Docker access. Use the community *Advanced SSH &
+Web Terminal* add-on with Protection mode disabled, then `docker exec -it
+addon_<hash>_freqtrade_okx bash` (find the exact name with `docker ps | grep
+freqtrade`). Three helpers are bundled:
 
 ```bash
 # 1. Download ~8 months of OKX 1h data for the current volume pairlist
@@ -241,6 +259,19 @@ ft-backtest
 # 3. Optional: optimize the strategy's buy parameters:
 ft-hyperopt 100
 ```
+
+Both helpers take `--stake-currency USDT|USDC` to backtest against a quote
+currency other than the one the bot runs with — pass the same value to both:
+
+```bash
+ft-download-data 240 --stake-currency USDT
+ft-backtest --stake-currency USDT
+```
+
+This matters on EEA accounts: USDC pairs on OKX are young and thin, so a
+USDC backtest often has too little history and too few pairs to mean anything,
+while the *strategy* is equally valid on USDT candles — `BTC/USDT` and
+`BTC/USDC` are the same asset.
 
 What the helpers do, if you prefer the raw commands:
 
@@ -331,6 +362,13 @@ get the bundled version back.
   Actions), and `notifications_enabled: true`.
 - **Panel says BOT UNREACHABLE** → the bot is still starting (pairlist
   warm-up takes ~30 s) or crashed — check the add-on Log tab.
-- **Backtest says "No data found"** → run `ft-download-data` first.
+- **Backtest says "No data found."** → run `ft-download-data` first, with the
+  same `--stake-currency` you intend to backtest.
+- **Whitelist has only a handful of pairs** → almost always the spread filter
+  on thin books. Raise `pairlist_max_spread_percent` (0.8–1.0) and/or lower
+  `pairlist_min_volume`, and see §3.1 — USDC is the usual cause.
+- **The panel's Backtesting card says the control endpoint is unreachable** →
+  check the add-on log for "Backtest control endpoint"; trading is unaffected,
+  and the `ft-*` helpers still work from a container shell.
 - **Entries rejected on OKX** → stake below the pair's minimum order size;
   raise `stake_amount_eur`.
