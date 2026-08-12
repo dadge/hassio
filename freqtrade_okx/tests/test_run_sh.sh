@@ -48,10 +48,12 @@ DEFAULT_OPTIONS='{
 # The shim bodies below are single-quoted on purpose: "$@"/"$url" must reach the
 # generated script verbatim rather than expand here.
 # shellcheck disable=SC2016
+# 0.8655 EUR per USDT is a real OKX quote; the add-on must INVERT it, giving
+# 1.155402 USDT per EUR (20 EUR -> 23.11 USDT, 100 EUR -> 115.54 USDT).
 CURL_DEFAULT='#!/usr/bin/env bash
 for a in "$@"; do case "$a" in http*) url="$a";; esac; done
 case "$url" in
-  *EUR-USDT*) echo "{\"code\":\"0\",\"data\":[{\"instId\":\"EUR-USDT\",\"last\":\"1.1742\"}]}"; exit 0 ;;
+  *USDT-EUR*) echo "{\"code\":\"0\",\"data\":[{\"instId\":\"USDT-EUR\",\"last\":\"0.8655\"}]}"; exit 0 ;;
   *) echo "test-shim: refusing $url" >&2; exit 7 ;;
 esac'
 
@@ -152,8 +154,11 @@ check "empty api_username rejected"        "$(has "$OUT" "api_username must not 
 
 scenario "budget conversion and sanity warnings"
 setup; run_addon
-check "20 EUR at 1.1742 -> 23.48 USDT"     "$([[ $(cfg .stake_amount) == 23.48 ]] && echo 0 || echo 1)"
-check "100 EUR cap -> 117.42 USDT"         "$([[ $(cfg .available_capital) == 117.42 ]] && echo 0 || echo 1)"
+# The OKX quote is EUR per USDT (0.8655); using it uninverted would size every
+# stake at ~17 USDT instead of ~23, so assert the inverted numbers explicitly.
+check "OKX quote inverted (1/0.8655)"      "$(has "$OUT" "EUR/USDT rate: 1.155402")"
+check "20 EUR -> 23.11 USDT"               "$([[ $(cfg .stake_amount) == 23.11 ]] && echo 0 || echo 1)"
+check "100 EUR cap -> 115.54 USDT"         "$([[ $(cfg .available_capital) == 115.54 ]] && echo 0 || echo 1)"
 setup; set_opt '.stake_amount_eur = 2 | .max_total_exposure_eur = 3'; run_addon
 check "warns about a tiny stake"           "$(has "$OUT" "may reject entries on some pairs")"
 check "warns exposure < stake x trades"    "$(has "$OUT" "exceeds max_total_exposure_eur")"
@@ -182,12 +187,44 @@ setup
 shim curl '#!/usr/bin/env bash
 for a in "$@"; do case "$a" in http*) url="$a";; esac; done
 case "$url" in
-  *frankfurter*) echo "{\"rates\":{\"USD\":1.09}}"; exit 0 ;;
+  *frankfurter.dev/v1*) echo "{\"rates\":{\"USD\":1.09}}"; exit 0 ;;
   *) exit 7 ;;
 esac'
 run_addon
-check "names the fallback source"          "$(has "$OUT" "using the ECB EUR/USD reference rate")"
+check "names the fallback source"          "$(has "$OUT" "Falling back to the ECB EUR/USD reference rate")"
 check "20 EUR at 1.09 -> 21.80 USDT"       "$([[ $(cfg .stake_amount) == 21.80 ]] && echo 0 || echo 1)"
+
+# Regression: OKX has no EUR-USDT/EUR-USDC instrument. Asking for one returns
+# error 51001 with an empty data array — that must degrade to the ECB rate
+# instead of looping until the add-on gives up (bug hit on a real install).
+scenario "OKX 51001 (unknown instrument) degrades to the ECB rate"
+setup
+# shellcheck disable=SC2016  # shim body must stay unexpanded
+shim curl '#!/usr/bin/env bash
+for a in "$@"; do case "$a" in http*) url="$a";; esac; done
+case "$url" in
+  *instId=USDT-EUR*) echo "{\"code\":\"51001\",\"msg\":\"Instrument ID ... does not exist.\",\"data\":[]}"; exit 0 ;;
+  *frankfurter.dev/v1*) echo "{\"rates\":{\"USD\":1.154}}"; exit 0 ;;
+  *) exit 7 ;;
+esac'
+run_addon
+check "starts anyway"                      "$([[ $RC -eq 0 ]] && echo 0 || echo 1)"
+check "says the OKX ticker was empty"      "$(has "$OUT" "OKX USDT-EUR ticker unreachable or empty")"
+check "uses the ECB rate"                  "$(has "$OUT" "EUR/USDT rate: 1.154")"
+
+# Regression: curl must follow the api.frankfurter.app -> .dev redirect (-L).
+scenario "the ECB endpoint is the current one, not the redirecting host"
+setup
+# shellcheck disable=SC2016  # shim body must stay unexpanded
+shim curl '#!/usr/bin/env bash
+for a in "$@"; do case "$a" in http*) url="$a";; esac; done
+case "$url" in
+  *api.frankfurter.app*) echo "moved" >&2; exit 22 ;;
+  *frankfurter.dev/v1*) echo "{\"rates\":{\"USD\":1.154}}"; exit 0 ;;
+  *) exit 7 ;;
+esac'
+run_addon
+check "does not call the retired host"     "$([[ $RC -eq 0 ]] && echo 0 || echo 1)"
 
 scenario "implausible rate responses are rejected"
 setup
@@ -195,7 +232,7 @@ setup
 shim curl '#!/usr/bin/env bash
 for a in "$@"; do case "$a" in http*) url="$a";; esac; done
 case "$url" in
-  *EUR-USDT*) echo "{\"code\":\"1\",\"msg\":\"error\",\"data\":[]}"; exit 0 ;;
+  *USDT-EUR*) echo "{\"code\":\"0\",\"data\":[{\"last\":\"0\"}]}"; exit 0 ;;
   *frankfurter*) echo "{\"rates\":{\"USD\":\"not-a-number\"}}"; exit 0 ;;
   *) exit 7 ;;
 esac'

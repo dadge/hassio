@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.1
+
+- **Fix: the add-on could not start.** The EUR→USDT rate was read from a
+  `EUR-USDT` ticker, which does not exist on OKX (error 51001, empty data);
+  the correct instrument is `USDT-EUR`, whose quote is now inverted. Neither
+  `EUR-USDC` nor `EUR-USDT` exists on OKX.
+- **Fix:** the ECB fallback pointed at `api.frankfurter.app`, which now
+  301-redirects to `api.frankfurter.dev/v1`; curl did not follow redirects,
+  so the fallback silently failed too. Now uses the current endpoint, and
+  follows redirects.
+- Rate-fetch logging now names which source failed and why.
+- Regression tests for all of the above.
+
 ## 1.0.0
 
 - Initial release.

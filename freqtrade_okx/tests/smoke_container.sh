@@ -11,10 +11,11 @@
 #   Requirements: docker (Linux engine), bash
 #   Usage:        freqtrade_okx/tests/smoke_container.sh
 #
-# Outbound calls are stubbed: a `curl` shim returns a canned OKX EUR-USDT
-# ticker and fails every Supervisor call, exactly as it would outside Home
-# Assistant. `freqtrade trade` is replaced by an inspector so the test ends
-# deterministically instead of waiting on the exchange.
+# Outbound calls are stubbed: a `curl` shim returns a canned OKX USDT-EUR
+# ticker (which the add-on inverts) and fails every Supervisor call, exactly
+# as it would outside Home Assistant. `freqtrade trade` is replaced by an
+# inspector so the test ends deterministically instead of waiting on the
+# exchange.
 # ==============================================================================
 set -Euo pipefail
 
@@ -33,7 +34,7 @@ step() { printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
 dk() { MSYS_NO_PATHCONV=1 docker "$@"; }
 
 step "Building the add-on image"
-dk build --build-arg BUILD_VERSION=1.0.0 --build-arg BUILD_ARCH=amd64 \
+dk build --build-arg BUILD_VERSION=1.0.1 --build-arg BUILD_ARCH=amd64 \
     -t "$IMAGE" "$ADDON"
 
 step "Preparing /data and the shims"
@@ -52,7 +53,7 @@ cat > "$BIN/curl" <<'EOF'
 #!/bin/bash
 for a in "$@"; do case "$a" in http*) url="$a";; esac; done
 case "$url" in
-  *EUR-USDT*) echo '{"code":"0","data":[{"instId":"EUR-USDT","last":"1.1742"}]}'; exit 0 ;;
+  *USDT-EUR*) echo '{"code":"0","data":[{"instId":"USDT-EUR","last":"0.8655"}]}'; exit 0 ;;
   *) echo "smoke-shim: refusing $url" >&2; exit 7 ;;
 esac
 EOF

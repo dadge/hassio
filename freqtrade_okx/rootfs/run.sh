@@ -152,33 +152,51 @@ WS_TOKEN="$(gen_secret ws_token)"
 
 # ------------------------------------------------------ EUR -> USDT amounts --
 # Stake currency is USDT (OKX has almost no EUR spot pairs). The EUR options
-# are converted at startup using the live OKX EUR/USDT spot price, with
-# frankfurter.app (ECB EUR->USD, USDT≈USD) as fallback. If no rate can be
-# fetched the add-on refuses to start: without OKX connectivity the bot could
-# not trade anyway, and guessing an FX rate would silently change stake sizes.
+# are converted at startup from a live rate. If no rate can be fetched the
+# add-on refuses to start: without OKX connectivity the bot could not trade
+# anyway, and guessing an FX rate would silently change stake sizes.
+#
+# Rate sources, in order:
+#   1. OKX's own USDT-EUR spot ticker. NOTE the direction: OKX lists USDT-EUR
+#      (EUR per USDT, ~0.87), NOT EUR-USDT — neither EUR-USDT nor EUR-USDC
+#      exists on OKX and asking for them returns error 51001 with empty data.
+#      The EUR->USDT rate is therefore the INVERSE of that quote.
+#   2. ECB reference rate EUR->USD via frankfurter.dev, treating USDT as USD.
+#      (api.frankfurter.app now 301-redirects here, hence -L on every call.)
 #
 # The add-on can start before the host's network is up (e.g. after a power
 # cut), so each round tries both sources and the loop keeps retrying for
 # ~3 minutes before giving up.
-rate_is_sane() {  # a EUR/USDT rate far outside this band means a broken response
+rate_is_sane() {  # a EUR/USDT or USDT/EUR rate outside this band means a broken response
     [[ "$1" =~ ^[0-9]+([.][0-9]+)?$ ]] && awk "BEGIN{exit !($1 > 0.3 && $1 < 3)}"
 }
 fetch_eur_usdt_rate() {
-    local rate attempt
+    local quote rate attempt
     for attempt in $(seq 1 12); do
-        # Primary: OKX's own EUR-USDT spot ticker (same venue the bot trades on).
-        rate="$(curl -fsS -m 10 'https://www.okx.com/api/v5/market/ticker?instId=EUR-USDT' 2>/dev/null \
-                | jq -r '.data[0].last // empty' 2>/dev/null || true)"
-        if rate_is_sane "$rate"; then
-            echo "$rate"; return 0
+        # 1. OKX USDT-EUR, inverted. Same venue the bot trades on.
+        quote="$(curl -fsSL -m 10 'https://www.okx.com/api/v5/market/ticker?instId=USDT-EUR' 2>/dev/null \
+                 | jq -r '.data[0].last // empty' 2>/dev/null || true)"
+        if rate_is_sane "$quote"; then
+            rate="$(awk "BEGIN{printf \"%.6f\", 1 / $quote}")"
+            if rate_is_sane "$rate"; then
+                echo "$rate"; return 0
+            fi
         fi
-        # Fallback: ECB reference rate EUR->USD (USDT assumed ≈ USD).
-        rate="$(curl -fsS -m 10 'https://api.frankfurter.app/latest?from=EUR&to=USD' 2>/dev/null \
-                | jq -r '.rates.USD // empty' 2>/dev/null || true)"
-        if rate_is_sane "$rate"; then
-            warn "OKX EUR-USDT ticker unavailable — using the ECB EUR/USD reference rate instead."
-            echo "$rate"; return 0
+        if [[ -n "$quote" ]]; then
+            warn "OKX USDT-EUR ticker returned an unusable price ('$quote')."
+        else
+            warn "OKX USDT-EUR ticker unreachable or empty."
         fi
+
+        # 2. ECB reference rate.
+        quote="$(curl -fsSL -m 10 'https://api.frankfurter.dev/v1/latest?from=EUR&to=USD' 2>/dev/null \
+                 | jq -r '.rates.USD // empty' 2>/dev/null || true)"
+        if rate_is_sane "$quote"; then
+            warn "Falling back to the ECB EUR/USD reference rate (USDT treated as USD)."
+            echo "$quote"; return 0
+        fi
+        warn "ECB reference rate (api.frankfurter.dev) unreachable or empty as well."
+
         [[ "$attempt" -lt 12 ]] || break
         warn "No EUR/USDT rate yet (attempt $attempt/12) — waiting 15s for network connectivity..."
         sleep 15

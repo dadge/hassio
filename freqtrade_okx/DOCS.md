@@ -73,10 +73,13 @@ OKX has almost no EUR spot pairs, so the bot trades **USDT-quoted** pairs
 with USDT as stake currency. To let you think in EUR, the two budget options
 are given in EUR and converted **once per add-on start**:
 
-1. The live `EUR-USDT` price is fetched from OKX's public ticker API
-   (fallback: ECB rate via frankfurter.app, treating USDT ≈ USD). The add-on
-   retries both sources for up to 3 minutes, so starting before the host's
-   network is up (e.g. after a power cut) is not a problem;
+1. The live rate is read from OKX's public ticker API. Note the direction:
+   OKX lists **`USDT-EUR`** (EUR per USDT, ~0.87) — there is no `EUR-USDT` or
+   `EUR-USDC` instrument — so the add-on inverts that quote to get EUR→USDT.
+   Fallback: the ECB reference rate via `api.frankfurter.dev`, treating
+   USDT ≈ USD. The add-on retries both sources for up to 3 minutes, so
+   starting before the host's network is up (e.g. after a power cut) is not
+   a problem;
 2. `stake_amount_eur × rate → stake_amount` (USDT),
    `max_total_exposure_eur × rate → available_capital` (USDT);
 3. The conversion is logged at startup and included in the start notification.
