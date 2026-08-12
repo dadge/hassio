@@ -37,8 +37,9 @@ scenario() { printf '\n\033[1;34m%s\033[0m\n' "$*"; }
 DEFAULT_OPTIONS='{
   "mode": "dry-run", "i_understand_live_trading": false, "okx_environment": "okx",
   "okx_api_key": "", "okx_api_secret": "", "okx_api_passphrase": "",
+  "stake_currency": "USDT",
   "stake_amount_eur": 20.0, "max_total_exposure_eur": 100.0, "max_open_trades": 3,
-  "dry_run_wallet_usdt": 1000.0, "pairlist_min_volume_usdt": 1000000.0,
+  "dry_run_wallet": 1000.0, "pairlist_min_volume": 1000000.0,
   "api_username": "freqtrade", "api_password": "", "notifications_enabled": true,
   "notify_service": "notify.mobile_app_op15", "cors_origins": [], "log_level": "info"
 }'
@@ -54,6 +55,7 @@ CURL_DEFAULT='#!/usr/bin/env bash
 for a in "$@"; do case "$a" in http*) url="$a";; esac; done
 case "$url" in
   *USDT-EUR*) echo "{\"code\":\"0\",\"data\":[{\"instId\":\"USDT-EUR\",\"last\":\"0.8655\"}]}"; exit 0 ;;
+  *USDC-EUR*) echo "{\"code\":\"0\",\"data\":[{\"instId\":\"USDC-EUR\",\"last\":\"0.8662\"}]}"; exit 0 ;;
   *) echo "test-shim: refusing $url" >&2; exit 7 ;;
 esac'
 
@@ -182,6 +184,30 @@ check "warns about a tiny stake"           "$(has "$OUT" "may reject entries on 
 check "warns exposure < stake x trades"    "$(has "$OUT" "exceeds max_total_exposure_eur")"
 setup; set_opt '.max_total_exposure_eur = 5000'; run_addon
 check "dry-run caps capital to the wallet" "$([[ $(cfg .available_capital) == 1000.0 ]] && echo 0 || echo 1)"
+
+# OKX's EEA entity (myokx) restricts USDT under MiCA, so the stake currency is
+# selectable. The rate must follow it: USDC-EUR (0.8662) inverts to 1.154467.
+scenario "stake_currency follows the option"
+setup; run_addon
+check "defaults to USDT"                   "$([[ $(cfg .stake_currency) == USDT ]] && echo 0 || echo 1)"
+check "uses the USDT-EUR ticker"           "$(has "$OUT" "EUR/USDT rate: 1.155402")"
+setup; set_opt '.stake_currency = "USDC"'; run_addon
+check "starts on USDC"                     "$([[ $RC -eq 0 ]] && echo 0 || echo 1)"
+check "config says USDC"                   "$([[ $(cfg .stake_currency) == USDC ]] && echo 0 || echo 1)"
+check "uses the USDC-EUR ticker"           "$(has "$OUT" "EUR/USDC rate: 1.154468")"
+check "20 EUR -> 23.09 USDC"               "$([[ $(cfg .stake_amount) == 23.09 ]] && echo 0 || echo 1)"
+check "leveraged-token blacklist follows"  "$(has "$(jq -r '.exchange.pair_blacklist[]' "$ROOT/data/config.json")" "BEAR)/USDC")"
+setup; set_opt '.stake_currency = "BTC"'; run_addon
+check "rejects an unsupported currency"    "$(has "$OUT" "Invalid stake_currency 'BTC'")"
+check "no config written"                  "$([[ ! -f $ROOT/data/config.json ]] && echo 0 || echo 1)"
+
+# A stablecoin can only "dip" by depegging, which is the one dip never to buy.
+scenario "stablecoin bases are blacklisted"
+setup; run_addon
+BLACKLIST="$(jq -r '.exchange.pair_blacklist[]' "$ROOT/data/config.json")"
+for coin in USDT USDC RLUSD USDG USTC DAI FRAX; do
+    check "blacklists $coin as a base"     "$(has "$BLACKLIST" "$coin")"
+done
 
 scenario "a locally edited strategy is never overwritten"
 setup; run_addon >/dev/null 2>&1

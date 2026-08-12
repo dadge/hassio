@@ -56,22 +56,23 @@ a random password is generated once and stored in
 | `i_understand_live_trading` | `false` | Second confirmation required for live mode. The add-on refuses to start live without it. |
 | `okx_environment` | `okx` | `okx` for okx.com accounts, `myokx` for my.okx.com (EAA) accounts. |
 | `okx_api_key/secret/passphrase` | empty | The OKX API credentials. Optional in dry-run (public data only), required for live. |
-| `stake_amount_eur` | `20` | Stake per trade **in EUR** — converted to USDT at startup (see §3). |
-| `max_total_exposure_eur` | `100` | Cap on the total capital the bot may use, in EUR → converted to USDT (`available_capital`). |
+| `stake_currency` | `USDT` | `USDT` (deepest books) or `USDC`. See §3.1 — EEA accounts on `my.okx.com` may be unable to trade USDT under MiCA. |
+| `stake_amount_eur` | `20` | Stake per trade **in EUR** — converted to the stake currency at startup (see §3). |
+| `max_total_exposure_eur` | `100` | Cap on the total capital the bot may use, in EUR → converted (`available_capital`). |
 | `max_open_trades` | `3` | Maximum simultaneous positions. |
-| `dry_run_wallet_usdt` | `1000` | Simulated wallet for dry-run mode. |
-| `pairlist_min_volume_usdt` | `1000000` | Minimum 24h quote volume for a pair to be tradable. |
+| `dry_run_wallet` | `1000` | Simulated wallet (stake currency) for dry-run mode. |
+| `pairlist_min_volume` | `1000000` | Minimum 24h quote volume for a pair to be tradable. Lower it for USDC. |
 | `api_username` / `api_password` | `freqtrade` / auto | Login for FreqUI and the REST API. |
 | `notifications_enabled` | `true` | Master switch for HA notifications. |
 | `notify_service` | `notify.mobile_app_op15` | Any HA notify service (`notify.<something>`). |
 | `cors_origins` | `[]` | Extra allowed origins for the REST API (only needed for external FreqUI instances). |
 | `log_level` | `info` | `debug` adds verbose Freqtrade logging. |
 
-## 3. Why EUR options on a USDT bot?
+## 3. Why EUR options on a USDT/USDC bot?
 
-OKX has almost no EUR spot pairs, so the bot trades **USDT-quoted** pairs
-with USDT as stake currency. To let you think in EUR, the two budget options
-are given in EUR and converted **once per add-on start**:
+OKX has almost no EUR spot pairs, so the bot trades **USDT- or USDC-quoted**
+pairs (see §3.1). To let you think in EUR, the two budget options are given in
+EUR and converted **once per add-on start**:
 
 1. The live rate is read from OKX's public ticker API. Note the direction:
    OKX lists **`USDT-EUR`** (EUR per USDT, ~0.87) — there is no `EUR-USDT` or
@@ -80,14 +81,35 @@ are given in EUR and converted **once per add-on start**:
    USDT ≈ USD. The add-on retries both sources for up to 3 minutes, so
    starting before the host's network is up (e.g. after a power cut) is not
    a problem;
-2. `stake_amount_eur × rate → stake_amount` (USDT),
-   `max_total_exposure_eur × rate → available_capital` (USDT);
+2. `stake_amount_eur × rate → stake_amount`,
+   `max_total_exposure_eur × rate → available_capital`;
 3. The conversion is logged at startup and included in the start notification.
 
 If no rate can be fetched at all, the add-on **refuses to start** rather than
 guessing (without OKX connectivity the bot could not trade anyway). Note the
 converted amounts stay fixed until the next restart; a moving EUR/USDT rate
 does not resize open positions.
+
+### 3.1 USDT or USDC? (important for EU accounts)
+
+`stake_currency` defaults to **USDT**, which has by far the deepest books on
+OKX. But if you registered on **`my.okx.com`** (the EEA entity — the same
+accounts that need `okx_environment: myokx`), MiCA rules restrict USDT
+trading, and **USDC** is the practical quote currency.
+
+Note that this is *not* visible in dry-run: `my.okx.com`'s public API serves
+USDT tickers to everyone, so the pairlist fills with `XXX/USDT` pairs and
+everything looks healthy. The restriction only bites when a real order is
+placed. **Check on the exchange whether your account can trade USDT spot
+pairs before enabling live mode**; if it cannot, set `stake_currency: USDC`.
+
+When switching to USDC, also lower `pairlist_min_volume`: USDC books on OKX
+are roughly an order of magnitude thinner than USDT ones (BTC/USDC traded
+~348 BTC/24h vs ~5551 BTC/24h for BTC/USDT at the time of writing), so far
+fewer pairs clear a 1,000,000 threshold.
+
+The EUR conversion follows the choice automatically: it reads `USDT-EUR` or
+`USDC-EUR` and inverts it.
 
 ## 4. Paper / live switching
 

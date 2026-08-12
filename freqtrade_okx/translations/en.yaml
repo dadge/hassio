@@ -25,21 +25,32 @@ configuration:
   okx_api_passphrase:
     name: OKX API passphrase
     description: The passphrase you chose when creating the API key.
+  stake_currency:
+    name: Stake currency
+    description: >-
+      USDT has the deepest order books on OKX. Choose USDC if your account is
+      on the EEA entity (my.okx.com), where USDT trading is restricted under
+      MiCA — USDC books are thinner, so lower the minimum pair volume too.
   stake_amount_eur:
     name: Stake per trade (EUR)
-    description: Converted to USDT at startup using the live OKX EUR/USDT rate.
+    description: >-
+      Converted to the stake currency at startup using the live OKX rate.
   max_total_exposure_eur:
     name: Max total exposure (EUR)
-    description: Cap on the total capital the bot may use, converted to USDT.
+    description: >-
+      Cap on the total capital the bot may use, converted to the stake
+      currency.
   max_open_trades:
     name: Max open trades
     description: Maximum number of simultaneous positions.
-  dry_run_wallet_usdt:
-    name: Dry-run wallet (USDT)
-    description: Simulated balance used in dry-run mode.
-  pairlist_min_volume_usdt:
-    name: Min 24h pair volume (USDT)
-    description: Pairs below this 24h quote volume are never traded.
+  dry_run_wallet:
+    name: Dry-run wallet
+    description: Simulated balance (in the stake currency) used in dry-run mode.
+  pairlist_min_volume:
+    name: Min 24h pair volume
+    description: >-
+      Pairs below this 24h quote volume are never traded. USDC books are much
+      thinner than USDT ones, so lower this if you switch.
   api_username:
     name: FreqUI / API username
     description: Login for FreqUI and the REST API.

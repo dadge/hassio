@@ -6,7 +6,7 @@
 #   1. Read & validate add-on options (/data/options.json)
 #   2. Enforce the paper/live safety rules (dry-run by default, forced dry-run
 #      after every add-on update, explicit confirmation for live)
-#   3. Convert EUR budget options to USDT using the live OKX EUR/USDT rate
+#   3. Convert EUR budget options to the stake currency (USDT or USDC)
 #   4. Generate the Freqtrade configuration (secrets never touch the logs)
 #   5. Start nginx (ingress control panel + HA notification relay)
 #   6. Send start/mode-change notifications to Home Assistant
@@ -42,11 +42,12 @@ OKX_ENV="$(opt okx_environment)"
 OKX_KEY="$(opt okx_api_key)"
 OKX_SECRET="$(opt okx_api_secret)"
 OKX_PASSPHRASE="$(opt okx_api_passphrase)"
+STAKE_CCY="$(opt stake_currency)"
 STAKE_EUR="$(opt stake_amount_eur)"
 EXPOSURE_EUR="$(opt max_total_exposure_eur)"
 MAX_OPEN_TRADES="$(opt max_open_trades)"
-DRY_WALLET="$(opt dry_run_wallet_usdt)"
-MIN_VOLUME="$(opt pairlist_min_volume_usdt)"
+DRY_WALLET="$(opt dry_run_wallet)"
+MIN_VOLUME="$(opt pairlist_min_volume)"
 API_USERNAME="$(opt api_username)"
 API_PASSWORD="$(opt api_password)"
 NOTIFY_ENABLED="$(opt notifications_enabled)"
@@ -77,6 +78,10 @@ ha_notify() {  # $1 = title, $2 = message
 [[ "$MODE" == "dry-run" || "$MODE" == "live" ]] || fatal "Invalid mode '$MODE' (must be dry-run or live)"
 [[ "$NOTIFY_SERVICE" == *.* ]] || fatal "notify_service must look like 'notify.mobile_app_xxx' (got '$NOTIFY_SERVICE')"
 [[ -n "$API_USERNAME" ]] || fatal "api_username must not be empty"
+# USDT has by far the deepest books on OKX, but its EEA entity (myokx)
+# restricts it under MiCA, where USDC is the practical quote currency.
+[[ "$STAKE_CCY" == "USDT" || "$STAKE_CCY" == "USDC" ]] \
+    || fatal "Invalid stake_currency '$STAKE_CCY' (must be USDT or USDC)"
 
 # Check the bot itself is runnable BEFORE the exchange-rate lookup, so a broken
 # image fails in a second with a clear message instead of after 3 minutes of
@@ -160,31 +165,33 @@ gen_secret() {  # $1 = state file name
 JWT_SECRET="$(gen_secret jwt_secret)"
 WS_TOKEN="$(gen_secret ws_token)"
 
-# ------------------------------------------------------ EUR -> USDT amounts --
-# Stake currency is USDT (OKX has almost no EUR spot pairs). The EUR options
-# are converted at startup from a live rate. If no rate can be fetched the
-# add-on refuses to start: without OKX connectivity the bot could not trade
+# ----------------------------------------------------- EUR -> stake amounts --
+# The bot quotes in USDT or USDC (OKX has almost no EUR spot pairs), so the EUR
+# options are converted at startup from a live rate. If no rate can be fetched
+# the add-on refuses to start: without OKX connectivity the bot could not trade
 # anyway, and guessing an FX rate would silently change stake sizes.
 #
 # Rate sources, in order:
-#   1. OKX's own USDT-EUR spot ticker. NOTE the direction: OKX lists USDT-EUR
-#      (EUR per USDT, ~0.87), NOT EUR-USDT — neither EUR-USDT nor EUR-USDC
-#      exists on OKX and asking for them returns error 51001 with empty data.
-#      The EUR->USDT rate is therefore the INVERSE of that quote.
-#   2. ECB reference rate EUR->USD via frankfurter.dev, treating USDT as USD.
+#   1. OKX's own <STAKE>-EUR spot ticker. NOTE the direction: OKX lists
+#      USDT-EUR / USDC-EUR (EUR per stablecoin, ~0.87) and NOT the reverse —
+#      neither EUR-USDT nor EUR-USDC exists, and asking for one returns error
+#      51001 with empty data. The EUR->stake rate is the INVERSE of that quote.
+#   2. ECB reference rate EUR->USD via frankfurter.dev, treating the
+#      stablecoin as USD.
 #      (api.frankfurter.app now 301-redirects here, hence -L on every call.)
 #
 # The add-on can start before the host's network is up (e.g. after a power
 # cut), so each round tries both sources and the loop keeps retrying for
 # ~3 minutes before giving up.
-rate_is_sane() {  # a EUR/USDT or USDT/EUR rate outside this band means a broken response
+rate_is_sane() {  # a rate outside this band means a broken response
     [[ "$1" =~ ^[0-9]+([.][0-9]+)?$ ]] && awk "BEGIN{exit !($1 > 0.3 && $1 < 3)}"
 }
-fetch_eur_usdt_rate() {
+fetch_eur_stake_rate() {
     local quote rate attempt
+    # myokx accounts read the same public ticker host; only trading is entity-bound.
     for attempt in $(seq 1 12); do
-        # 1. OKX USDT-EUR, inverted. Same venue the bot trades on.
-        quote="$(curl -fsSL -m 10 'https://www.okx.com/api/v5/market/ticker?instId=USDT-EUR' 2>/dev/null \
+        # 1. OKX <STAKE>-EUR, inverted. Same venue the bot trades on.
+        quote="$(curl -fsSL -m 10 "https://www.okx.com/api/v5/market/ticker?instId=${STAKE_CCY}-EUR" 2>/dev/null \
                  | jq -r '.data[0].last // empty' 2>/dev/null || true)"
         if rate_is_sane "$quote"; then
             rate="$(awk "BEGIN{printf \"%.6f\", 1 / $quote}")"
@@ -193,45 +200,45 @@ fetch_eur_usdt_rate() {
             fi
         fi
         if [[ -n "$quote" ]]; then
-            warn "OKX USDT-EUR ticker returned an unusable price ('$quote')."
+            warn "OKX ${STAKE_CCY}-EUR ticker returned an unusable price ('$quote')."
         else
-            warn "OKX USDT-EUR ticker unreachable or empty."
+            warn "OKX ${STAKE_CCY}-EUR ticker unreachable or empty."
         fi
 
         # 2. ECB reference rate.
         quote="$(curl -fsSL -m 10 'https://api.frankfurter.dev/v1/latest?from=EUR&to=USD' 2>/dev/null \
                  | jq -r '.rates.USD // empty' 2>/dev/null || true)"
         if rate_is_sane "$quote"; then
-            warn "Falling back to the ECB EUR/USD reference rate (USDT treated as USD)."
+            warn "Falling back to the ECB EUR/USD reference rate (${STAKE_CCY} treated as USD)."
             echo "$quote"; return 0
         fi
         warn "ECB reference rate (api.frankfurter.dev) unreachable or empty as well."
 
         [[ "$attempt" -lt 12 ]] || break
-        warn "No EUR/USDT rate yet (attempt $attempt/12) — waiting 15s for network connectivity..."
+        warn "No EUR/${STAKE_CCY} rate yet (attempt $attempt/12) — waiting 15s for network connectivity..."
         sleep 15
     done
     return 1
 }
-EUR_USDT_RATE="$(fetch_eur_usdt_rate)" || fatal "Could not determine the EUR/USDT exchange rate from any source after 3 minutes. \
+EUR_STAKE_RATE="$(fetch_eur_stake_rate)" || fatal "Could not determine the EUR/${STAKE_CCY} exchange rate from any source after 3 minutes. \
 Check the internet connection of your Home Assistant host (the bot needs to reach www.okx.com to trade anyway)."
 
-STAKE_USDT="$(awk "BEGIN{printf \"%.2f\", $STAKE_EUR * $EUR_USDT_RATE}")"
-EXPOSURE_USDT="$(awk "BEGIN{printf \"%.2f\", $EXPOSURE_EUR * $EUR_USDT_RATE}")"
-info "EUR/USDT rate: $EUR_USDT_RATE — stake: ${STAKE_EUR} EUR ≈ ${STAKE_USDT} USDT, max exposure: ${EXPOSURE_EUR} EUR ≈ ${EXPOSURE_USDT} USDT"
+STAKE_AMT="$(awk "BEGIN{printf \"%.2f\", $STAKE_EUR * $EUR_STAKE_RATE}")"
+EXPOSURE_AMT="$(awk "BEGIN{printf \"%.2f\", $EXPOSURE_EUR * $EUR_STAKE_RATE}")"
+info "EUR/${STAKE_CCY} rate: $EUR_STAKE_RATE — stake: ${STAKE_EUR} EUR ≈ ${STAKE_AMT} ${STAKE_CCY}, max exposure: ${EXPOSURE_EUR} EUR ≈ ${EXPOSURE_AMT} ${STAKE_CCY}"
 
-if awk "BEGIN{exit !($STAKE_USDT < 5)}"; then
-    warn "Stake of ${STAKE_USDT} USDT is very small — OKX minimum order sizes (~1-5 USDT) may reject entries on some pairs."
+if awk "BEGIN{exit !($STAKE_AMT < 5)}"; then
+    warn "Stake of ${STAKE_AMT} ${STAKE_CCY} is very small — OKX minimum order sizes (~1-5) may reject entries on some pairs."
 fi
-if awk "BEGIN{exit !($STAKE_USDT * $MAX_OPEN_TRADES > $EXPOSURE_USDT)}"; then
+if awk "BEGIN{exit !($STAKE_AMT * $MAX_OPEN_TRADES > $EXPOSURE_AMT)}"; then
     warn "stake_amount_eur × max_open_trades exceeds max_total_exposure_eur."
-    warn "Freqtrade will stop opening new trades once the exposure cap (available_capital=${EXPOSURE_USDT} USDT) is reached."
+    warn "Freqtrade will stop opening new trades once the exposure cap (available_capital=${EXPOSURE_AMT} ${STAKE_CCY}) is reached."
 fi
 # In dry-run the exposure cap cannot exceed the simulated wallet.
-AVAILABLE_CAPITAL="$EXPOSURE_USDT"
-if [[ "$MODE" == "dry-run" ]] && awk "BEGIN{exit !($EXPOSURE_USDT > $DRY_WALLET)}"; then
+AVAILABLE_CAPITAL="$EXPOSURE_AMT"
+if [[ "$MODE" == "dry-run" ]] && awk "BEGIN{exit !($EXPOSURE_AMT > $DRY_WALLET)}"; then
     AVAILABLE_CAPITAL="$DRY_WALLET"
-    info "Capping available_capital to the dry-run wallet (${DRY_WALLET} USDT)."
+    info "Capping available_capital to the dry-run wallet (${DRY_WALLET} ${STAKE_CCY})."
 fi
 
 # ------------------------------------------------------------ user_data dir --
@@ -268,11 +275,12 @@ jq -n \
     --argjson dry_run "$DRY_RUN_JSON" \
     --argjson dry_run_wallet "$DRY_WALLET" \
     --argjson max_open_trades "$MAX_OPEN_TRADES" \
-    --argjson stake_amount "$STAKE_USDT" \
+    --argjson stake_amount "$STAKE_AMT" \
     --argjson available_capital "$AVAILABLE_CAPITAL" \
     --argjson min_volume "$MIN_VOLUME" \
     --argjson cors "$CORS_JSON" \
     --arg exchange_name "$OKX_ENV" \
+    --arg stake_currency "$STAKE_CCY" \
     --arg key "$OKX_KEY" \
     --arg secret "$OKX_SECRET" \
     --arg password "$OKX_PASSPHRASE" \
@@ -288,7 +296,7 @@ jq -n \
         trading_mode: "spot",
         margin_mode: "",
         max_open_trades: $max_open_trades,
-        stake_currency: "USDT",
+        stake_currency: $stake_currency,
         stake_amount: $stake_amount,
         available_capital: $available_capital,
         fiat_display_currency: "EUR",
@@ -315,10 +323,13 @@ jq -n \
             ccxt_async_config: {},
             pair_whitelist: [],
             pair_blacklist: [
-                "(USDC|TUSD|DAI|FDUSD|USDP|PYUSD|GUSD|EURT|USTC|USDe|BUSD)/.*",
+                # Stablecoin bases. They cannot drop 10% unless they DEPEG, and a
+                # depeg is the one "dip" that must never be bought (see USTC).
+                ("(USDT|USDC|TUSD|DAI|FDUSD|USDP|PYUSD|GUSD|EURT|USTC|USDe" +
+                 "|BUSD|RLUSD|USDG|USD0|USDS|USDD|LUSD|FRAX)/.*"),
                 "(EUR|GBP|AUD|TRY|BRL)/.*",
                 ".*(3L|3S|5L|5S)/.*",
-                ".*(UP|DOWN|BULL|BEAR)/USDT"
+                ("[A-Z0-9]+(UP|DOWN|BULL|BEAR)/" + $stake_currency)
             ]
         },
         pairlists: [
@@ -490,14 +501,14 @@ echo "$MODE" > "$STATE_DIR/last_mode"
 if [[ "$MODE" == "live" ]]; then
     info "=================================================================="
     info "  STARTING IN *** LIVE *** MODE — REAL MONEY IS AT RISK"
-    info "  stake/trade: ${STAKE_USDT} USDT (~${STAKE_EUR} EUR)"
-    info "  exposure cap: ${EXPOSURE_USDT} USDT (~${EXPOSURE_EUR} EUR), max trades: ${MAX_OPEN_TRADES}"
+    info "  stake/trade: ${STAKE_AMT} ${STAKE_CCY} (~${STAKE_EUR} EUR)"
+    info "  exposure cap: ${EXPOSURE_AMT} ${STAKE_CCY} (~${EXPOSURE_EUR} EUR), max trades: ${MAX_OPEN_TRADES}"
     info "=================================================================="
 else
-    info "Starting in DRY-RUN mode (simulated wallet: ${DRY_WALLET} USDT). No real orders will be placed."
+    info "Starting in DRY-RUN mode (simulated wallet: ${DRY_WALLET} ${STAKE_CCY}). No real orders will be placed."
 fi
 ha_notify "Freqtrade started ${MODE_TAG}" \
-    "Bot starting in ${MODE^^} mode. Stake ${STAKE_USDT} USDT (~${STAKE_EUR} EUR)/trade, max ${MAX_OPEN_TRADES} trades, exposure cap ${EXPOSURE_USDT} USDT."
+    "Bot starting in ${MODE^^} mode. Stake ${STAKE_AMT} ${STAKE_CCY} (~${STAKE_EUR} EUR)/trade, max ${MAX_OPEN_TRADES} trades, exposure cap ${EXPOSURE_AMT} ${STAKE_CCY}."
 
 # ------------------------------------------------------------- freqtrade ----
 VERBOSITY=()

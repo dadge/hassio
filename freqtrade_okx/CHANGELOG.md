@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.1.0
+
+- **New option `stake_currency` (`USDT` or `USDC`, default `USDT`).** OKX's
+  EEA entity (`my.okx.com`, `okx_environment: myokx`) restricts USDT trading
+  under MiCA, and its public API still serves USDT tickers, so dry-run looks
+  perfectly healthy while live orders would be rejected. The EUR conversion
+  follows the choice (`USDT-EUR` or `USDC-EUR`, inverted) and the blacklist
+  adapts. See DOCS §3.1 before going live on an EU account.
+- **Renamed** `dry_run_wallet_usdt` → `dry_run_wallet` and
+  `pairlist_min_volume_usdt` → `pairlist_min_volume`, since neither is
+  USDT-specific any more. **You must re-enter these two values after
+  updating** — the Supervisor drops options that are no longer in the schema.
+  Lower `pairlist_min_volume` if you switch to USDC: those books are far
+  thinner.
+- Blacklist now also covers `USDT`, `RLUSD`, `USDG`, `USD0`, `USDS`, `USDD`,
+  `LUSD` and `FRAX` as base currencies. A stablecoin cannot dip 10% unless it
+  *depegs*, and a depeg is precisely the "dip" this strategy must never buy.
+
 ## 1.0.2
 
 - **Fix: the add-on started, then crashed with `ModuleNotFoundError: No module

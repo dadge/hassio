@@ -34,7 +34,7 @@ step() { printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
 dk() { MSYS_NO_PATHCONV=1 docker "$@"; }
 
 step "Building the add-on image"
-dk build --build-arg BUILD_VERSION=1.0.1 --build-arg BUILD_ARCH=amd64 \
+dk build --build-arg BUILD_VERSION=1.1.0 --build-arg BUILD_ARCH=amd64 \
     -t "$IMAGE" "$ADDON"
 
 step "Preparing /data and the shims"
@@ -42,8 +42,9 @@ cat > "$DATA/options.json" <<'EOF'
 {
   "mode": "dry-run", "i_understand_live_trading": false, "okx_environment": "okx",
   "okx_api_key": "", "okx_api_secret": "", "okx_api_passphrase": "",
+  "stake_currency": "USDT",
   "stake_amount_eur": 20.0, "max_total_exposure_eur": 100.0, "max_open_trades": 3,
-  "dry_run_wallet_usdt": 1000.0, "pairlist_min_volume_usdt": 1000000.0,
+  "dry_run_wallet": 1000.0, "pairlist_min_volume": 1000000.0,
   "api_username": "freqtrade", "api_password": "", "notifications_enabled": true,
   "notify_service": "notify.mobile_app_op15", "cors_origins": [], "log_level": "info"
 }
