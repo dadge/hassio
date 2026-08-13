@@ -42,6 +42,7 @@ OKX_ENV="$(opt okx_environment)"
 OKX_KEY="$(opt okx_api_key)"
 OKX_SECRET="$(opt okx_api_secret)"
 OKX_PASSPHRASE="$(opt okx_api_passphrase)"
+STRATEGY="$(opt strategy)"
 STAKE_CCY="$(opt stake_currency)"
 STAKE_EUR="$(opt stake_amount_eur)"
 EXPOSURE_EUR="$(opt max_total_exposure_eur)"
@@ -272,7 +273,21 @@ deploy_file() {  # $1 = source, $2 = target, $3 = checksum state file
     sha256sum "$src" | awk '{print $1}' > "$state"
 }
 deploy_file /defaults/strategies/ReboundStrategy.py "$USER_DATA/strategies/ReboundStrategy.py" strategy.sha
+deploy_file /defaults/strategies/MeanRevert15m.py "$USER_DATA/strategies/MeanRevert15m.py" strategy_mr15.sha
 deploy_file /defaults/tests/test_rebound_strategy.py "$USER_DATA/tests/test_rebound_strategy.py" test.sha
+deploy_file /defaults/tests/test_meanrevert15m.py "$USER_DATA/tests/test_meanrevert15m.py" test_mr15.sha
+
+# The strategy is selectable, including files you drop in yourself. Validate it
+# here rather than letting freqtrade fail with a stack trace 30 seconds later.
+if [[ ! -f "$USER_DATA/strategies/${STRATEGY}.py" ]]; then
+    error "Strategy '${STRATEGY}' not found ($USER_DATA/strategies/${STRATEGY}.py)."
+    error "Available strategies:"
+    for f in "$USER_DATA"/strategies/*.py; do
+        [[ -e "$f" ]] && error "  - $(basename "$f" .py)"
+    done
+    fatal "Set the 'strategy' option to one of the names above, or copy your own .py into $USER_DATA/strategies/."
+fi
+info "Strategy: ${STRATEGY}"
 
 # --------------------------------------------------- freqtrade config files --
 DB_FILE="tradesv3.sqlite"
@@ -291,6 +306,7 @@ jq -n \
     --argjson cors "$CORS_JSON" \
     --arg exchange_name "$OKX_ENV" \
     --arg stake_currency "$STAKE_CCY" \
+    --arg strategy "$STRATEGY" \
     --arg key "$OKX_KEY" \
     --arg secret "$OKX_SECRET" \
     --arg password "$OKX_PASSPHRASE" \
@@ -302,7 +318,7 @@ jq -n \
     --arg mode_tag "$MODE_TAG" \
     '{
         bot_name: "freqtrade-okx-rebound",
-        strategy: "ReboundStrategy",
+        strategy: $strategy,
         trading_mode: "spot",
         margin_mode: "",
         max_open_trades: $max_open_trades,
@@ -546,7 +562,7 @@ else
     info "Starting in DRY-RUN mode (simulated wallet: ${DRY_WALLET} ${STAKE_CCY}). No real orders will be placed."
 fi
 ha_notify "Freqtrade started ${MODE_TAG}" \
-    "Bot starting in ${MODE^^} mode. Stake ${STAKE_AMT} ${STAKE_CCY} (~${STAKE_EUR} EUR)/trade, max ${MAX_OPEN_TRADES} trades, exposure cap ${EXPOSURE_AMT} ${STAKE_CCY}."
+    "Bot starting in ${MODE^^} mode (${STRATEGY}). Stake ${STAKE_AMT} ${STAKE_CCY} (~${STAKE_EUR} EUR)/trade, max ${MAX_OPEN_TRADES} trades, exposure cap ${EXPOSURE_AMT} ${STAKE_CCY}."
 
 # ------------------------------------------------------------- freqtrade ----
 VERBOSITY=()
@@ -556,5 +572,5 @@ info "Launching freqtrade..."
 exec freqtrade trade \
     --config "$FT_CONFIG" \
     --userdir "$USER_DATA" \
-    --strategy ReboundStrategy \
+    --strategy "$STRATEGY" \
     "${VERBOSITY[@]}"

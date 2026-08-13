@@ -36,6 +36,7 @@ scenario() { printf '\n\033[1;34m%s\033[0m\n' "$*"; }
 
 DEFAULT_OPTIONS='{
   "mode": "dry-run", "i_understand_live_trading": false, "okx_environment": "okx",
+  "strategy": "ReboundStrategy",
   "okx_api_key": "", "okx_api_secret": "", "okx_api_passphrase": "",
   "stake_currency": "USDT",
   "stake_amount_eur": 20.0, "max_total_exposure_eur": 100.0, "max_open_trades": 3,
@@ -209,6 +210,20 @@ BLACKLIST="$(jq -r '.exchange.pair_blacklist[]' "$ROOT/data/config.json")"
 for coin in USDT USDC RLUSD USDG USTC DAI FRAX; do
     check "blacklists $coin as a base"     "$(has "$BLACKLIST" "$coin")"
 done
+
+scenario "the strategy is selectable and validated"
+setup; run_addon
+check "defaults to ReboundStrategy"        "$([[ $(cfg .strategy) == ReboundStrategy ]] && echo 0 || echo 1)"
+check "launched with it"                   "$(has "$OUT" "--strategy ReboundStrategy")"
+check "both bundled strategies deployed"   "$([[ -f $ROOT/data/user_data/strategies/MeanRevert15m.py && -f $ROOT/data/user_data/strategies/ReboundStrategy.py ]] && echo 0 || echo 1)"
+check "both strategy tests deployed"       "$([[ -f $ROOT/data/user_data/tests/test_meanrevert15m.py && -f $ROOT/data/user_data/tests/test_rebound_strategy.py ]] && echo 0 || echo 1)"
+setup; set_opt '.strategy = "MeanRevert15m"'; run_addon
+check "selects MeanRevert15m"              "$([[ $(cfg .strategy) == MeanRevert15m ]] && echo 0 || echo 1)"
+check "launched with it"                   "$(has "$OUT" "--strategy MeanRevert15m")"
+setup; set_opt '.strategy = "NoSuchStrategy"'; run_addon
+check "unknown strategy is fatal"          "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
+check "lists what is available"            "$(has "$OUT" "- ReboundStrategy")"
+check "freqtrade never launched"           "$(hasnt "$OUT" "FREQTRADE-ARGS")"
 
 scenario "the spread cap is configurable and validated"
 setup; run_addon

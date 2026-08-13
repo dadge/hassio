@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.0
+
+- **New option `strategy`** — pick which strategy the bot runs, including a
+  `.py` you drop into `/data/user_data/strategies/` yourself. An unknown name
+  is refused at startup with the list of available strategies, rather than a
+  freqtrade stack trace half a minute later.
+- **New bundled strategy `MeanRevert15m`** — 15m mean reversion built for thin
+  USDC books on OKX's EEA entity, where the round-trip cost (~0.3-0.6%) is the
+  binding constraint rather than signal quality:
+  - target +2.5% decaying, stop -2.0%, so the breakeven win rate is ~53%
+    rather than the ~87% a -4% stop with +1% targets and averaging down needs;
+  - an ATR volatility floor: no entry unless the pair moves enough to clear
+    costs;
+  - an orderbook spread check at order time (`confirm_trade_entry`), because a
+    pairlist filter only re-evaluates every refresh period;
+  - entry on a *recent* band touch plus an RSI turn, not both on one candle —
+    by the time the turn confirms, price has normally left the band, and
+    requiring simultaneity produces a strategy that never trades;
+  - no averaging down.
+  Its unit tests assert that every guard can veto an entry on its own.
+- `ReboundStrategy` remains the default; nothing changes unless you switch.
+
 ## 1.2.1
 
 - **Fix: a failed data download reported only "exit 2" with no explanation.**

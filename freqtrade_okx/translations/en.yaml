@@ -16,6 +16,12 @@ configuration:
     description: >-
       'okx' for okx.com accounts, 'myokx' if you registered on my.okx.com
       (OKX EAA — common for EU users).
+  strategy:
+    name: Strategy
+    description: >-
+      Bundled: ReboundStrategy (1h dip rebound) or MeanRevert15m (15m mean
+      reversion, designed for thin USDC books). Or the name of any .py you
+      copied into /data/user_data/strategies/ — the class name, without .py.
   okx_api_key:
     name: OKX API key
     description: Create a trade-only key (no withdrawal!) with an IP allowlist.

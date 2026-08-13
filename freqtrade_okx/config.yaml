@@ -1,5 +1,5 @@
 name: Freqtrade OKX Rebound Bot
-version: "1.2.1"
+version: "1.3.0"
 slug: freqtrade_okx
 description: >-
   Freqtrade crypto trading bot pre-configured for OKX spot trading with a
@@ -28,6 +28,7 @@ options:
   mode: dry-run
   i_understand_live_trading: false
   okx_environment: okx
+  strategy: ReboundStrategy
   okx_api_key: ""
   okx_api_secret: ""
   okx_api_passphrase: ""
@@ -48,6 +49,7 @@ schema:
   mode: list(dry-run|live)
   i_understand_live_trading: bool
   okx_environment: list(okx|myokx)
+  strategy: str
   okx_api_key: password?
   okx_api_secret: password?
   okx_api_passphrase: password?
