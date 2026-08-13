@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.5.1
+
+- **Security fix — `ft-export-data` no longer exports your credentials.** It
+  copied the backtest config verbatim into `/share`, and that config carries the
+  OKX API key, secret and passphrase plus the Freqtrade API password. `/share`
+  is published on the LAN by the Samba add-on and the file is meant to be
+  carried to other machines, so those secrets travelled with it. The exported
+  copy is now redacted (`key`/`secret`/`password`/`uid` replaced, the
+  `api_server` block dropped) and written mode 600. Backtesting never needed
+  them — only the pairlist, stake currency and exchange name, which are kept.
+  **If you exported data before this version, delete the copies and rotate your
+  OKX API key.**
+- **`ft-backtest-all` no longer aborts a whole timeframe batch on a short-only
+  strategy.** Six of the bundled upstream strategies declare `can_short = True`
+  while living outside the `futures/` folder, and freqtrade refuses to load one
+  in spot mode with a fatal error that killed every other strategy sharing its
+  timeframe. They are now detected by their declaration rather than their
+  folder, and listed as skipped.
+
 ## 1.5.0
 
 - **New `ft-export-data`**: copies downloaded candles into `/share`, which the

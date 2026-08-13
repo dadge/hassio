@@ -20,8 +20,13 @@
 # per strategy — but a run has a single timeframe, so strategies are grouped by
 # the timeframe they declare.
 #
-# futures/ strategies are always skipped: they short and use leverage, which
-# this spot-only add-on cannot do.
+# Strategies that short are always skipped: this add-on is spot-only, and
+# freqtrade aborts the whole run with "Short strategies cannot run in spot
+# markets" the moment it loads one. That is checked two ways -- the futures/
+# group they were shipped in, and a `can_short = True` in the file itself,
+# because six of the upstream strategies declare it while living in the main
+# strategies folder. One of them used to abort its entire timeframe batch,
+# taking every other strategy's results with it.
 set -Eeuo pipefail
 
 TIMERANGE=""
@@ -75,9 +80,14 @@ list_candidates() {
     done
 }
 
+SHORTERS=()
 for name in $(list_candidates); do
     f="$STRAT_DIR/${name}.py"
     [[ -f "$f" ]] || { echo "!! no such strategy: $name"; continue; }
+    if grep -qE "^[[:space:]]*can_short[[:space:]]*=[[:space:]]*True" "$f"; then
+        SHORTERS+=("$name")
+        continue
+    fi
     tf="$(grep -m1 -oE "^[[:space:]]*timeframe[[:space:]]*=[[:space:]]*[\"'][^\"']+" "$f" \
           | grep -oE "[\"'][^\"']+$" | tr -d "\"'" || true)"
     [[ -n "$tf" ]] || tf="unknown"
@@ -86,6 +96,9 @@ done
 
 echo "== Screening $(( ${#TF_OF[@]} )) strategies on ${PAIR_COUNT} pairs, timerange ${TIMERANGE}"
 echo "== Data: $DATA_DIR"
+if [[ ${#SHORTERS[@]} -gt 0 ]]; then
+    echo "== Skipped ${#SHORTERS[@]} short-only strategies (spot cannot short): ${SHORTERS[*]}"
+fi
 
 # --- run one batch per timeframe -------------------------------------------
 STATUS=0

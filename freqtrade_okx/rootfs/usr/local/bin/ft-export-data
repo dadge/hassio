@@ -56,7 +56,22 @@ done < <(find "$SRC" -maxdepth 1 -type f \( -name '*.feather' -o -name '*.json' 
 
 # The static pairlist config travels too: it names the pairs and the stake
 # currency the data was downloaded for, which the other machine needs.
-[[ -f "$STATIC_CFG" ]] && cp "$STATIC_CFG" "$DEST/config_backtest_static.json"
+#
+# It is REDACTED on the way out. The live config carries the OKX key, secret and
+# passphrase and the API server password; /share is exported over the LAN by the
+# Samba add-on and this file is meant to be copied onto other machines, so
+# shipping it verbatim would scatter live trading credentials. Backtesting needs
+# none of them -- only the pairlist, stake currency and exchange name.
+if [[ -f "$STATIC_CFG" ]]; then
+    jq '.exchange |= (to_entries
+                      | map(if .key | IN("key", "secret", "password", "uid")
+                            then .value = "REDACTED" else . end)
+                      | from_entries)
+        | del(.api_server)
+        | ._comment_export = "Credentials removed by ft-export-data. Backtesting does not need them."' \
+        "$STATIC_CFG" > "$DEST/config_backtest_static.json"
+    chmod 600 "$DEST/config_backtest_static.json" 2>/dev/null || true
+fi
 
 SIZE="$(du -sh "$DEST/$EXCHANGE" 2>/dev/null | awk '{print $1}')"
 echo ">> Exported ${copied} files (${SIZE:-?}) to ${DEST}/${EXCHANGE}"

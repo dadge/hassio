@@ -179,6 +179,9 @@ printf 'class X:\n    timeframe = "1h"\n' > "$ROOT/data/user_data/strategies/One
 printf 'class X:\n    timeframe = "5m"\n' > "$ROOT/data/user_data/strategies/FiveMin.py"
 printf 'class X:\n    timeframe = "1h"\n' > "$ROOT/data/user_data/strategies/FutOne.py"
 printf 'class X:\n    timeframe = "1h"\n' > "$ROOT/data/user_data/strategies/PeekingOne.py"
+# Ships in the plain strategies folder but shorts: freqtrade aborts the entire
+# batch on it, so it must be filtered out by its declaration, not its folder.
+printf 'class X:\n    timeframe = "1h"\n    can_short = True\n' > "$ROOT/data/user_data/strategies/ShortOne.py"
 printf 'FutOne\tfutures\nPeekingOne\tlookahead_bias\n' > "$ROOT/data/.addon/community_index"
 touch "$ROOT/data/user_data/data/myokx/A_USDC-1h.feather"   # 1h present, 5m absent
 shim freqtrade '#!/usr/bin/env bash
@@ -192,9 +195,13 @@ check "skips 5m for lack of data"         "$(has "$OUT" "SKIP 5m")"
 check "says how to get that data"         "$(has "$OUT" "ft-download-data 240 --timeframes")"
 check "excludes futures strategies"       "$(hasnt "$OUT" "FutOne")"
 check "excludes lookahead strategies"     "$(hasnt "$OUT" "PeekingOne")"
+check "excludes can_short strategies"     "$(hasnt "$OUT" "--strategy-list OneHourA OneHourB ShortOne")"
+check "says why they were skipped"        "$(has "$OUT" "short-only strategies (spot cannot short): ShortOne")"
 run_helper ft-backtest-all 20260201- --include-lookahead
 check "--include-lookahead opts them in"  "$(has "$OUT" "PeekingOne")"
 check "but never futures"                 "$(hasnt "$OUT" "FutOne")"
+run_helper ft-backtest-all 20260201- --strategies "OneHourA ShortOne"
+check "an explicit list cannot short either" "$(has "$OUT" "short-only strategies (spot cannot short): ShortOne")"
 run_helper ft-backtest-all --max-pairs notanumber
 check "rejects a bad --max-pairs"         "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
 
@@ -222,6 +229,44 @@ fi
 setup ft-export-data
 run_helper ft-export-data
 check "says to download data first"       "$(has "$OUT" "run ft-download-data first")"
+
+# The copy itself, against a sandboxed /share. This exists because the first
+# version of the helper copied the live config verbatim — OKX key, secret and
+# passphrase included — into a directory the Samba add-on publishes on the LAN,
+# and from there onto every machine the data was carried to.
+scenario "ft-export-data never copies credentials out of the add-on"
+setup ft-export-data
+# Point the helper's /share at the sandbox: the destination guard and the mount
+# check both hard-code it, and neither path exists on a developer machine.
+sed -e "s#\([=\"' ]\)/data/#\1$ROOT/data/#g" \
+    -e "s#/share#$ROOT/share#g" \
+    -e "s#=~ \^/(share#=~ ^$ROOT/(share#" \
+    "$BIN/ft-export-data" > "$ROOT/ft-export-data"
+chmod +x "$ROOT/ft-export-data"
+mkdir -p "$ROOT/share" "$ROOT/data/user_data/data/myokx"
+jq -n '{exchange:{name:"myokx",key:"okx-key-aaaa",secret:"okx-secret-bbbb",
+                  password:"okx-passphrase-cccc",
+                  pair_whitelist:["BTC/USDT","ETH/USDT"]},
+        stake_currency:"USDT",
+        api_server:{enabled:true,username:"freqtrader",password:"api-pass-dddd"}}' \
+    > "$ROOT/data/config_backtest_static.json"
+touch "$ROOT/data/user_data/data/myokx/BTC_USDT-15m.feather" \
+      "$ROOT/data/user_data/data/myokx/BTC_USDT-1h.feather"
+run_helper ft-export-data
+EXPORTED="$ROOT/share/freqtrade-data/config_backtest_static.json"
+check "succeeds"                          "$([[ $RC -eq 0 ]] && echo 0 || echo 1)"
+check "copies the candle files"           "$([[ -f "$ROOT/share/freqtrade-data/myokx/BTC_USDT-1h.feather" ]] && echo 0 || echo 1)"
+check "writes the travelling config"      "$([[ -f "$EXPORTED" ]] && echo 0 || echo 1)"
+for leak in okx-key-aaaa okx-secret-bbbb okx-passphrase-cccc api-pass-dddd; do
+    check "no $leak in the export"        "$(hasnt "$(cat "$EXPORTED" 2>/dev/null)" "$leak")"
+done
+check "drops the api_server block"        "$([[ $(jq 'has("api_server")' "$EXPORTED" 2>/dev/null) == false ]] && echo 0 || echo 1)"
+check "keeps the pairlist"                "$([[ $(jq -r '.exchange.pair_whitelist | length' "$EXPORTED" 2>/dev/null) == 2 ]] && echo 0 || echo 1)"
+check "keeps the stake currency"          "$([[ $(jq -r '.stake_currency' "$EXPORTED" 2>/dev/null) == USDT ]] && echo 0 || echo 1)"
+check "keeps the exchange name"           "$([[ $(jq -r '.exchange.name' "$EXPORTED" 2>/dev/null) == myokx ]] && echo 0 || echo 1)"
+check "says the export was redacted"      "$(has "$(cat "$EXPORTED" 2>/dev/null)" "Credentials removed")"
+run_helper ft-export-data --timeframes "1h"
+check "--timeframes filters the copy"     "$([[ -f "$ROOT/share/freqtrade-data/myokx/BTC_USDT-1h.feather" && ! -f "$ROOT/share/freqtrade-data/myokx/BTC_USDT-15m.feather" ]] && echo 0 || echo 1)"
 
 printf '\n========================================\n'
 if [[ $fails -eq 0 ]]; then printf '\033[32mALL CHECKS PASSED\033[0m\n'
