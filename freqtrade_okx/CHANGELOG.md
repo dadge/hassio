@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.5.0
+
+- **New `ft-export-data`**: copies downloaded candles into `/share`, which the
+  Samba add-on exposes on the LAN, so a faster machine can run the backtests.
+  Backtesting needs no exchange access — only the candles — and a laptop does
+  in minutes what a Raspberry Pi takes hours over. The add-on now maps
+  `share:rw` for this, and the export refuses any destination outside
+  `/share`, `/media` or `/backup`.
+- The `download` job accepts `timeframes`, so extra timeframes can be fetched
+  from the panel (the CLI helper always could). 41 of the 61 bundled spot
+  strategies need 5m/1m/4h/30m/1d/12h candles, none of which are downloaded by
+  default.
+- New `export` job on the control endpoint.
+
 ## 1.4.2
 
 - The panel's `screen` job accepts a `strategies` list, matching the helper's

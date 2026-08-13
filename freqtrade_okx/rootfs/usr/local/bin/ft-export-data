@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Copy downloaded candle data out of the add-on so another machine can use it.
+#
+# Usage: ft-export-data [--dest /share/freqtrade-data] [--timeframes "15m 1h"]
+#
+# Why: the add-on's /data is a Docker volume that nothing else can read. This
+# copies the OHLCV files into /share, which the Samba add-on exposes on the
+# LAN, so a faster machine can run the backtests. Backtesting needs no exchange
+# access — only the candles — so a laptop with Freqtrade installed can do in
+# minutes what a Raspberry Pi takes hours over.
+#
+# The destination is emptied of previous exports of the same exchange first, so
+# repeat runs do not accumulate stale files.
+set -Eeuo pipefail
+
+USER_DATA=/data/user_data
+STATIC_CFG=/data/config_backtest_static.json
+DEST=/share/freqtrade-data
+TIMEFRAMES=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dest) DEST="${2:-}"; shift 2 ;;
+        --timeframes) TIMEFRAMES="${2:-}"; shift 2 ;;
+        -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+        *) echo "unknown argument: $1"; exit 2 ;;
+    esac
+done
+[[ "$DEST" =~ ^/(share|media|backup)(/|$) ]] \
+    || { echo "--dest must be under /share, /media or /backup (got '$DEST')"; exit 2; }
+[[ -z "$TIMEFRAMES" || "$TIMEFRAMES" =~ ^[0-9smhdMw\ ]+$ ]] || { echo "invalid --timeframes"; exit 2; }
+
+EXCHANGE="$(jq -r '.exchange.name // "okx"' "$STATIC_CFG" 2>/dev/null || echo okx)"
+SRC="$USER_DATA/data/$EXCHANGE"
+[[ -d "$SRC" ]] || { echo "No downloaded data at $SRC — run ft-download-data first."; exit 1; }
+
+if [[ ! -d /share ]]; then
+    echo "!! /share is not mounted in this add-on."
+    echo "!! It needs 'map: [share:rw]' in config.yaml — reinstall/update the add-on."
+    exit 1
+fi
+
+mkdir -p "$DEST/$EXCHANGE"
+rm -f "$DEST/$EXCHANGE"/*.feather "$DEST/$EXCHANGE"/*.json 2>/dev/null || true
+
+copied=0
+while IFS= read -r f; do
+    base="$(basename "$f")"
+    if [[ -n "$TIMEFRAMES" ]]; then
+        # File names look like BTC_USDT-1h.feather; keep only wanted timeframes.
+        tf="${base##*-}"; tf="${tf%%.*}"
+        grep -qw -- "$tf" <<<"$TIMEFRAMES" || continue
+    fi
+    cp "$f" "$DEST/$EXCHANGE/$base"
+    copied=$((copied + 1))
+done < <(find "$SRC" -maxdepth 1 -type f \( -name '*.feather' -o -name '*.json' \) | sort)
+
+# The static pairlist config travels too: it names the pairs and the stake
+# currency the data was downloaded for, which the other machine needs.
+[[ -f "$STATIC_CFG" ]] && cp "$STATIC_CFG" "$DEST/config_backtest_static.json"
+
+SIZE="$(du -sh "$DEST/$EXCHANGE" 2>/dev/null | awk '{print $1}')"
+echo ">> Exported ${copied} files (${SIZE:-?}) to ${DEST}/${EXCHANGE}"
+printf '>> Reachable over the Samba add-on'"'"'s share, e.g. \\\\<your-ha-ip>\\share\\%s\n' "$(basename "$DEST")"
+echo ">> On the other machine: put them in <userdir>/data/${EXCHANGE}/ and run"
+echo "   freqtrade backtesting --config config_backtest_static.json --userdir <userdir> --strategy NAME"

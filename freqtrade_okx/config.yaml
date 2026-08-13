@@ -1,5 +1,5 @@
 name: Freqtrade OKX Rebound Bot
-version: "1.4.2"
+version: "1.5.0"
 slug: freqtrade_okx
 description: >-
   Freqtrade crypto trading bot pre-configured for OKX spot trading with a
@@ -18,6 +18,10 @@ homeassistant_api: true
 ingress: true
 panel_icon: mdi:finance
 panel_title: Freqtrade
+# share:rw is only used by ft-export-data, to copy downloaded candles onto the
+# LAN so a faster machine can run the backtests.
+map:
+  - share:rw
 ports:
   8080/tcp: null
 ports_description:

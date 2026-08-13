@@ -34,7 +34,7 @@ LOG_TAIL_LINES = 80
 MAX_LOG_BYTES = 64 * 1024
 
 JOBS = {"download": "ft-download-data", "backtest": "ft-backtest",
-        "screen": "ft-backtest-all"}
+        "screen": "ft-backtest-all", "export": "ft-export-data"}
 STRATEGY_RE = re.compile(r"^[A-Za-z0-9_]{1,64}$")
 STRATEGY_LIST_RE = re.compile(r"^[A-Za-z0-9_ ]{1,2000}$")
 CURRENCIES = ("USDT", "USDC")
@@ -127,7 +127,9 @@ def _build_argv(payload: dict) -> list[str]:
         raise ValueError("unknown job %r (expected one of %s)" % (job, ", ".join(JOBS)))
     argv = [JOBS[job]]
 
-    if job == "download":
+    if job == "export":
+        pass  # takes no positional argument
+    elif job == "download":
         days = payload.get("days", 240)
         if not isinstance(days, int) or isinstance(days, bool) or not 1 <= days <= 1000:
             raise ValueError("days must be an integer between 1 and 1000")
@@ -138,6 +140,14 @@ def _build_argv(payload: dict) -> list[str]:
             if not TIMERANGE_RE.match(timerange):
                 raise ValueError("timerange must look like 20260101-20260701 or 20260101-")
             argv.append(timerange)
+
+    # Both download and export take --timeframes; screen has its own handling.
+    if job in ("download", "export"):
+        timeframes = payload.get("timeframes")
+        if timeframes:
+            if not TIMEFRAMES_RE.match(timeframes):
+                raise ValueError("timeframes must look like \"5m 15m 1h\"")
+            argv += ["--timeframes", timeframes]
 
     if job == "screen":
         pairs = payload.get("max_pairs")

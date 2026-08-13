@@ -198,6 +198,30 @@ check "but never futures"                 "$(hasnt "$OUT" "FutOne")"
 run_helper ft-backtest-all --max-pairs notanumber
 check "rejects a bad --max-pairs"         "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
 
+# ft-export-data writes into /share, which only exists inside the add-on, so
+# the copy itself is exercised on the device. What is testable here is that it
+# refuses to write anywhere else and explains a missing mount rather than
+# failing obscurely.
+scenario "ft-export-data guards its destination"
+setup ft-export-data
+mkdir -p "$ROOT/data/user_data/data/myokx"
+jq -n '{exchange:{name:"myokx"},stake_currency:"USDT"}' > "$ROOT/data/config_backtest_static.json"
+touch "$ROOT/data/user_data/data/myokx/BTC_USDT-1h.feather"
+for bad in /etc/passwd /data/escape "../../etc" /config; do
+    run_helper ft-export-data --dest "$bad"
+    check "refuses --dest $bad"           "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
+done
+run_helper ft-export-data --timeframes '$(id)'
+check "rejects an injected --timeframes"  "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
+if [[ ! -d /share ]]; then
+    run_helper ft-export-data
+    check "explains a missing /share mount" "$(has "$OUT" "not mounted in this add-on")"
+    check "names the config.yaml fix"       "$(has "$OUT" "map: [share:rw]")"
+fi
+setup ft-export-data
+run_helper ft-export-data
+check "says to download data first"       "$(has "$OUT" "run ft-download-data first")"
+
 printf '\n========================================\n'
 if [[ $fails -eq 0 ]]; then printf '\033[32mALL CHECKS PASSED\033[0m\n'
 else printf '\033[31m%d CHECK(S) FAILED\033[0m\n' "$fails"; fi
