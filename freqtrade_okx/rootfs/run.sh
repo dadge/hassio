@@ -277,6 +277,27 @@ deploy_file /defaults/strategies/MeanRevert15m.py "$USER_DATA/strategies/MeanRev
 deploy_file /defaults/tests/test_rebound_strategy.py "$USER_DATA/tests/test_rebound_strategy.py" test.sha
 deploy_file /defaults/tests/test_meanrevert15m.py "$USER_DATA/tests/test_meanrevert15m.py" test_mr15.sha
 
+# Community strategies (GPL-3.0, from freqtrade/freqtrade-strategies) are
+# deployed flat so the `strategy` option can name any of them; upstream keeps
+# class names identical to filenames. Their subdirectory is remembered so the
+# guards below can tell a futures/lookahead-bias strategy from a normal one.
+COMMUNITY_SRC=/defaults/strategies/community
+COMMUNITY_INDEX="$STATE_DIR/community_index"
+: > "$COMMUNITY_INDEX"
+if [[ -d "$COMMUNITY_SRC" ]]; then
+    while IFS= read -r src; do
+        name="$(basename "$src" .py)"
+        rel="${src#"$COMMUNITY_SRC"/}"
+        group="$(dirname "$rel")"
+        [[ "$group" == "." ]] && group="toplevel"
+        printf '%s\t%s\n' "$name" "$group" >> "$COMMUNITY_INDEX"
+        deploy_file "$src" "$USER_DATA/strategies/${name}.py" "community_${name}.sha"
+    done < <(find "$COMMUNITY_SRC" -name '*.py' | sort)
+    info "Deployed $(wc -l < "$COMMUNITY_INDEX") community strategies (GPL-3.0, see $USER_DATA/strategies/community-README.md)."
+    cp "$COMMUNITY_SRC/README.md" "$USER_DATA/strategies/community-README.md" 2>/dev/null || true
+    cp "$COMMUNITY_SRC/LICENSE" "$USER_DATA/strategies/community-LICENSE" 2>/dev/null || true
+fi
+
 # The strategy is selectable, including files you drop in yourself. Validate it
 # here rather than letting freqtrade fail with a stack trace 30 seconds later.
 if [[ ! -f "$USER_DATA/strategies/${STRATEGY}.py" ]]; then
@@ -287,7 +308,33 @@ if [[ ! -f "$USER_DATA/strategies/${STRATEGY}.py" ]]; then
     done
     fatal "Set the 'strategy' option to one of the names above, or copy your own .py into $USER_DATA/strategies/."
 fi
-info "Strategy: ${STRATEGY}"
+
+# --- guards on the two unusable community groups ---------------------------
+STRATEGY_GROUP="$(awk -F'\t' -v s="$STRATEGY" '$1 == s {print $2}' "$COMMUNITY_INDEX" 2>/dev/null | head -n 1)"
+case "$STRATEGY_GROUP" in
+    futures)
+        error "'${STRATEGY}' is one of the upstream *futures* examples: it shorts and uses leverage."
+        fatal "This add-on is spot-only (trading_mode: spot). Pick a spot strategy instead."
+        ;;
+    lookahead_bias)
+        # Upstream ships these as exercises in spotting look-ahead bias: they
+        # read future candles, so they backtest beautifully and lose live.
+        if [[ "$MODE" == "live" ]]; then
+            error "'${STRATEGY}' comes from the upstream *lookahead_bias* folder."
+            error "Those strategies deliberately peek at future candles — the backtest is a lie"
+            error "and they lose money in real trading. That is what they exist to demonstrate."
+            fatal "Refusing to trade real money with it. Use dry-run if you want to study it."
+        fi
+        warn "'${STRATEGY}' has a KNOWN look-ahead bias (upstream lookahead_bias folder)."
+        warn "Its backtest results are meaningless. Live mode with it is blocked."
+        ;;
+esac
+case "$STRATEGY_GROUP" in
+    "")       STRATEGY_LABEL="" ;;
+    toplevel) STRATEGY_LABEL=" (community)" ;;
+    *)        STRATEGY_LABEL=" (community/${STRATEGY_GROUP})" ;;
+esac
+info "Strategy: ${STRATEGY}${STRATEGY_LABEL}"
 
 # --------------------------------------------------- freqtrade config files --
 DB_FILE="tradesv3.sqlite"

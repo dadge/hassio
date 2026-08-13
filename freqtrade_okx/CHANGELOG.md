@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.4.0
+
+- **68 community strategies bundled** from
+  [freqtrade/freqtrade-strategies](https://github.com/freqtrade/freqtrade-strategies)
+  (commit `eff78d3`), deployed to `/data/user_data/strategies/` and selectable
+  with the `strategy` option. **They are GPL-3.0**, unlike this add-on (MIT) —
+  their `LICENSE` and a README ship alongside them.
+  Nothing in that set is reviewed or endorsed, and two groups are guarded
+  rather than trusted:
+  - `futures/` (7): they short and use leverage. This add-on is spot-only, so
+    selecting one is refused at startup with an explanation.
+  - `lookahead_bias/` (4): upstream ships these as exercises — they read
+    future candles, so their backtests are fiction. Live mode with one is
+    refused; dry-run warns loudly.
+- The image installs `ta`, the one dependency those strategies need that
+  Freqtrade does not ship.
+- **Fix: the panel's job log lagged minutes behind reality.** The child's
+  stdout is a file, so Python block-buffered it — during a throttled download
+  that made a working job indistinguishable from a hung one. Jobs now run with
+  `PYTHONUNBUFFERED=1`.
+- The startup log now names which group a community strategy came from.
+
 ## 1.3.2
 
 - **Fix: data download always failed with "Directory `/user_data` does not

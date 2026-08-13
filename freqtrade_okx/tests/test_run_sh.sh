@@ -65,6 +65,10 @@ setup() {
     rm -rf "${ROOT:?}"/*
     mkdir -p "$ROOT/data" "$ROOT/etc/nginx" "$ROOT/bin" "$ROOT/defaults"
     cp -r "$DEFAULTS/." "$ROOT/defaults/"
+    # The 68 vendored community strategies cost a checksum + copy each on every
+    # start, which makes every scenario ~10x slower. Only the scenarios that
+    # actually exercise them opt in via WITH_COMMUNITY=1.
+    [[ "${WITH_COMMUNITY:-0}" == "1" ]] || rm -rf "$ROOT/defaults/strategies/community"
     jq -n "$DEFAULT_OPTIONS" > "$ROOT/data/options.json"
     shim curl "$CURL_DEFAULT"
     # nginx: accept anything (the container smoke test does the real -t check).
@@ -225,6 +229,41 @@ setup; set_opt '.strategy = "NoSuchStrategy"'; run_addon
 check "unknown strategy is fatal"          "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
 check "lists what is available"            "$(has "$OUT" "- ReboundStrategy")"
 check "freqtrade never launched"           "$(hasnt "$OUT" "FREQTRADE-ARGS")"
+
+# 68 GPL-3.0 example strategies are vendored from freqtrade/freqtrade-strategies.
+# Two of the four upstream groups must never trade: futures/ needs shorting and
+# leverage this add-on does not do, and lookahead_bias/ peeks at future candles
+# by design, so its backtests are fiction.
+scenario "community strategies are deployed and the unusable groups are blocked"
+export WITH_COMMUNITY=1
+setup; run_addon
+check "reports how many were deployed"     "$(has "$OUT" "community strategies (GPL-3.0")"
+check "a top-level one is available"       "$([[ -f $ROOT/data/user_data/strategies/Bandtastic.py ]] && echo 0 || echo 1)"
+check "a berlinguyinca one is available"   "$([[ -f $ROOT/data/user_data/strategies/BbandRsi.py ]] && echo 0 || echo 1)"
+check "licence travels with the code"      "$([[ -f $ROOT/data/user_data/strategies/community-LICENSE ]] && echo 0 || echo 1)"
+check "bundled strategies still deployed"  "$([[ -f $ROOT/data/user_data/strategies/ReboundStrategy.py ]] && echo 0 || echo 1)"
+
+setup; set_opt '.strategy = "Bandtastic"'; run_addon
+check "a community strategy can be selected" "$([[ $RC -eq 0 ]] && echo 0 || echo 1)"
+check "labels a top-level one"             "$(has "$OUT" "Strategy: Bandtastic (community)")"
+setup; set_opt '.strategy = "BbandRsi"'; run_addon
+check "labels a subfolder one"             "$(has "$OUT" "Strategy: BbandRsi (community/berlinguyinca)")"
+
+setup; set_opt '.strategy = "FSampleStrategy"'; run_addon
+check "futures strategy refused"           "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
+check "explains why (spot only)"           "$(has "$OUT" "shorts and uses leverage")"
+check "freqtrade never launched"           "$(hasnt "$OUT" "FREQTRADE-ARGS")"
+
+setup; set_opt '.strategy = "Zeus"'; run_addon
+check "lookahead strategy warns in dry-run" "$(has "$OUT" "KNOWN look-ahead bias")"
+check "but still starts in dry-run"        "$([[ $RC -eq 0 ]] && echo 0 || echo 1)"
+setup; set_opt '.strategy = "Zeus" | .mode = "live" | .i_understand_live_trading = true
+                | .okx_api_key = "k" | .okx_api_secret = "s" | .okx_api_passphrase = "p"'
+run_addon
+check "lookahead strategy refused for live" "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
+check "says the backtest is a lie"         "$(has "$OUT" "the backtest is a lie")"
+check "no real trading with it"            "$(hasnt "$OUT" "FREQTRADE-ARGS")"
+unset WITH_COMMUNITY
 
 scenario "the spread cap is configurable and validated"
 setup; run_addon

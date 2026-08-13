@@ -141,6 +141,17 @@ def test_failure_is_reported():
     assert any("No data found." in line for line in status["log"]), status["log"]
 
 
+def test_child_output_is_unbuffered():
+    """A file-backed stdout is block-buffered by default, which made the panel
+    log lag minutes behind a running job. The child must see PYTHONUNBUFFERED."""
+    if not POSIX:
+        raise Skip("needs POSIX: executes a shebang script")
+    fake_helper("ft-download-data", 'echo "unbuffered=$PYTHONUNBUFFERED"')
+    call("POST", "/run", {"job": "download", "days": 5})
+    status = wait_idle()
+    assert any("unbuffered=1" in line for line in status["log"]), status["log"]
+
+
 def test_backtest_result_is_summarised():
     results = Path(control.BACKTEST_RESULTS)
     (results / "backtest-2026-08-12.json").write_text(json.dumps({

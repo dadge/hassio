@@ -29,6 +29,12 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+# GodStra, Heracles and Zeus (bundled community strategies) import `ta`, which
+# Freqtrade does not depend on. technical / pandas_ta / scipy / scikit-learn
+# already ship with the base image.
+RUN pip install --no-cache-dir "ta==0.11.0" \
+    && python3 -c "import ta; print('ta', ta.__name__, 'importable')"
+
 # Note: the official image already bundles the FreqUI build matching the
 # release (freqtrade/rpc/api_server/ui/installed), so no install-ui step.
 

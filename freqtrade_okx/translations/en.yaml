@@ -19,9 +19,12 @@ configuration:
   strategy:
     name: Strategy
     description: >-
-      Bundled: ReboundStrategy (1h dip rebound) or MeanRevert15m (15m mean
-      reversion, designed for thin USDC books). Or the name of any .py you
-      copied into /data/user_data/strategies/ — the class name, without .py.
+      ReboundStrategy (1h dip rebound), MeanRevert15m (15m mean reversion),
+      any of the 68 bundled community examples, or your own .py in
+      /data/user_data/strategies/. Use the class name, without .py. The
+      community examples are unreviewed: futures/ ones are refused (spot-only
+      add-on) and lookahead_bias/ ones are refused in live mode because they
+      read future candles by design.
   okx_api_key:
     name: OKX API key
     description: Create a trade-only key (no withdrawal!) with an IP allowlist.

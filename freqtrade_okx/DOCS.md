@@ -55,6 +55,7 @@ a random password is generated once and stored in
 | `mode` | `dry-run` | `dry-run` = simulated trading, `live` = real money. Changing it restarts the add-on with the new mode (see §4). |
 | `i_understand_live_trading` | `false` | Second confirmation required for live mode. The add-on refuses to start live without it. |
 | `okx_environment` | `okx` | `okx` for okx.com accounts, `myokx` for my.okx.com (EAA) accounts. |
+| `strategy` | `ReboundStrategy` | Which strategy to trade — see §2.1. Any name in `/data/user_data/strategies/`, without `.py`. |
 | `okx_api_key/secret/passphrase` | empty | The OKX API credentials. Optional in dry-run (public data only), required for live. |
 | `stake_currency` | `USDT` | `USDT` (deepest books) or `USDC`. See §3.1 — EEA accounts on `my.okx.com` may be unable to trade USDT under MiCA. |
 | `stake_amount_eur` | `20` | Stake per trade **in EUR** — converted to the stake currency at startup (see §3). |
@@ -68,6 +69,35 @@ a random password is generated once and stored in
 | `notify_service` | `notify.mobile_app_op15` | Any HA notify service (`notify.<something>`). |
 | `cors_origins` | `[]` | Extra allowed origins for the REST API (only needed for external FreqUI instances). |
 | `log_level` | `info` | `debug` adds verbose Freqtrade logging. |
+
+### 2.1 Strategies
+
+Three sources, all selectable by name with the `strategy` option:
+
+| | What it is |
+| --- | --- |
+| `ReboundStrategy` | Bundled. 1h dip-rebound, the add-on's default. |
+| `MeanRevert15m` | Bundled. 15m mean reversion, built around the cost of thin USDC books (see its docstring for the risk arithmetic). |
+| 68 community examples | Copied from [freqtrade/freqtrade-strategies](https://github.com/freqtrade/freqtrade-strategies), **GPL-3.0** (the add-on itself is MIT). Licence and notes ship as `community-LICENSE` / `community-README.md` in your strategies folder. |
+| your own | Drop a `.py` into `/data/user_data/strategies/` and name its class. |
+
+An unknown name is refused at startup with the list of what is available.
+
+**The community examples are unreviewed.** Upstream publishes them as
+teaching material, not as strategies to trade. Two groups are actively unsafe
+here and the add-on guards them rather than trusting you to remember:
+
+- **`futures/` (7 strategies)** short and use leverage. This add-on is
+  spot-only, so selecting one fails at startup.
+- **`lookahead_bias/` (4 strategies)** read future candles *on purpose* —
+  upstream ships them so you can practise spotting the mistake. They backtest
+  brilliantly and lose money live. Live mode with one is refused; dry-run
+  warns.
+
+Treat a good backtest from any of them with suspicion until you have
+out-of-sample numbers: on real OKX data over 181 days, both bundled strategies
+lost money, and an 8-trade sample showed a 62% win rate that a 163-trade
+sample revealed as 39%.
 
 ## 3. Why EUR options on a USDT/USDC bot?
 

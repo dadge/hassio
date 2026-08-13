@@ -161,12 +161,19 @@ def _start(payload: dict) -> dict:
         with open(LOG_FILE, "w") as log:
             log.write("$ %s\n" % " ".join(argv))
             log.flush()
+            # PYTHONUNBUFFERED: the child's stdout is a file, so Python block-
+            # buffers it and the panel's live log runs minutes behind the job —
+            # which made a throttled download look indistinguishable from a
+            # hung one. Unbuffered output costs nothing here and makes the log
+            # actually live.
+            env = dict(os.environ, PYTHONUNBUFFERED="1")
             proc = subprocess.Popen(  # noqa: S603 - argv is whitelisted above
                 argv,
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
                 start_new_session=True,
+                env=env,
             )
         _job.update({"name": payload["job"], "proc": proc, "started": _now(),
                      "finished": None, "returncode": None})
