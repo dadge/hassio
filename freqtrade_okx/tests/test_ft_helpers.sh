@@ -211,6 +211,7 @@ for bad in /etc/passwd /data/escape "../../etc" /config; do
     run_helper ft-export-data --dest "$bad"
     check "refuses --dest $bad"           "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
 done
+# shellcheck disable=SC2016  # the injection probe must reach the helper unexpanded
 run_helper ft-export-data --timeframes '$(id)'
 check "rejects an injected --timeframes"  "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
 if [[ ! -d /share ]]; then
