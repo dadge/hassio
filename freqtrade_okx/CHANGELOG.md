@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.2
+
+- **Fix: data download always failed with "Directory `/user_data` does not
+  exist".** `ft-download-data` invoked `freqtrade test-pairlist` without
+  `--userdir`, so freqtrade resolved user_data against the working directory
+  (`/`). Every other command already passed the flag. The generated config now
+  also carries `user_data_dir` explicitly, so a forgotten flag cannot cause
+  this again.
+
 ## 1.3.1
 
 - **Fix: the helpers hardcoded `--timeframe 1h`.** Backtesting MeanRevert15m

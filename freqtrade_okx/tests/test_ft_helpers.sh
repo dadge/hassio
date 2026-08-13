@@ -43,8 +43,12 @@ setup() {
 }
 shim() { printf '%s\n' "$2" > "$ROOT/bin/$1"; chmod +x "$ROOT/bin/$1"; }
 run_helper() {
-    OUT="$(PATH="$ROOT/bin:$PATH" bash "$ROOT/$1" "${@:2}" 2>&1)" && RC=0 || RC=$?
+    rm -f "$ROOT/args.txt"
+    OUT="$(PATH="$ROOT/bin:$PATH" ARGS_FILE="$ROOT/args.txt" bash "$ROOT/$1" "${@:2}" 2>&1)"         && RC=0 || RC=$?
 }
+# Args the shimmed freqtrade saw, even for calls whose output the helper
+# captures to a file rather than printing.
+seen_args() { cat "$ROOT/args.txt" 2>/dev/null || echo ""; }
 
 # ---------------------------------------------------------------------------
 scenario "ft-download-data surfaces freqtrade's own error instead of a bare exit code"
@@ -80,12 +84,15 @@ setup ft-download-data
 # shellcheck disable=SC2016  # shim body must stay unexpanded
 shim freqtrade '#!/usr/bin/env bash
 case "$1" in
-  test-pairlist) echo "Pairs:"; echo "[\"BTC/USDC\",\"ETH/USDC\"]" ;;
+  test-pairlist) echo "$*" >> "$ARGS_FILE"; echo "Pairs:"; echo "[\"BTC/USDC\",\"ETH/USDC\"]" ;;
   download-data) echo "DOWNLOAD-ARGS: $*" ;;
 esac'
 run_helper ft-download-data 240
 check "succeeds"                          "$([[ $RC -eq 0 ]] && echo 0 || echo 1)"
 check "reports the pair count"            "$(has "$OUT" "2 pairs selected")"
+# freqtrade resolves user_data against the cwd (/) unless told otherwise,
+# which aborted every pairlist resolution with "Directory /user_data does not exist".
+check "test-pairlist gets --userdir"      "$(has "$(seen_args)" "--userdir /")"
 check "downloads with the static config"  "$(has "$OUT" "config_backtest_static.json")"
 check "whitelist written"                 "$([[ $(jq -r '.exchange.pair_whitelist | join(",")' "$ROOT/data/config_backtest_static.json") == "BTC/USDC,ETH/USDC" ]] && echo 0 || echo 1)"
 check "pairlist switched to static"       "$([[ $(jq -r '.pairlists[0].method' "$ROOT/data/config_backtest_static.json") == StaticPairList ]] && echo 0 || echo 1)"

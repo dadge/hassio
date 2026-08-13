@@ -71,7 +71,10 @@ explain_failure() {
 HINT
 }
 
-if ! freqtrade test-pairlist --config "$LIVE_CFG" --print-json > "$PAIRS_OUT" 2>&1; then
+# --userdir is required: freqtrade otherwise resolves user_data relative to the
+# working directory (/), looks for /user_data and aborts.
+if ! freqtrade test-pairlist --config "$LIVE_CFG" --userdir /data/user_data \
+        --print-json > "$PAIRS_OUT" 2>&1; then
     explain_failure
     exit 1
 fi

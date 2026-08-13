@@ -330,6 +330,10 @@ jq -n \
         dry_run_wallet: $dry_run_wallet,
         cancel_open_orders_on_exit: false,
         db_url: $db_url,
+        # Belt and braces alongside --userdir on every command line: without
+        # this, any freqtrade invocation that forgets the flag resolves
+        # user_data against the working directory (/) and aborts.
+        user_data_dir: "/data/user_data",
         dataformat_ohlcv: "feather",
         unfilledtimeout: { entry: 10, exit: 10, exit_timeout_count: 0, unit: "minutes" },
         entry_pricing: {

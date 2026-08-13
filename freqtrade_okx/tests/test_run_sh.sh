@@ -215,6 +215,7 @@ scenario "the strategy is selectable and validated"
 setup; run_addon
 check "defaults to ReboundStrategy"        "$([[ $(cfg .strategy) == ReboundStrategy ]] && echo 0 || echo 1)"
 check "launched with it"                   "$(has "$OUT" "--strategy ReboundStrategy")"
+check "config carries user_data_dir"        "$([[ $(cfg .user_data_dir) == /data/user_data ]] && echo 0 || echo 1)"
 check "both bundled strategies deployed"   "$([[ -f $ROOT/data/user_data/strategies/MeanRevert15m.py && -f $ROOT/data/user_data/strategies/ReboundStrategy.py ]] && echo 0 || echo 1)"
 check "both strategy tests deployed"       "$([[ -f $ROOT/data/user_data/tests/test_meanrevert15m.py && -f $ROOT/data/user_data/tests/test_rebound_strategy.py ]] && echo 0 || echo 1)"
 setup; set_opt '.strategy = "MeanRevert15m"'; run_addon
