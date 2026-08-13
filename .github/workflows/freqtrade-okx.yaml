@@ -43,6 +43,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Run run.sh regression tests
         run: freqtrade_okx/tests/test_run_sh.sh
+      - name: Run ft-* helper tests
+        run: freqtrade_okx/tests/test_ft_helpers.sh
 
   control-endpoint-tests:
     name: Control endpoint tests

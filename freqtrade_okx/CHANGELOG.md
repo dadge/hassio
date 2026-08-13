@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.1
+
+- **Fix: a failed data download reported only "exit 2" with no explanation.**
+  `ft-download-data` discarded freqtrade's stderr when resolving the pairlist,
+  and under `set -e` the failing command substitution aborted the script before
+  its own error message could print. Exit 2 is freqtrade's code for an
+  OperationalException — so there *was* a message, and the helper threw it
+  away. It is now quoted verbatim, with the usual causes listed (exchange
+  unreachable, USDT asked for on an EEA account, or no pair passing the
+  filters).
+- New `tests/test_ft_helpers.sh` covering the ft-* helpers directly.
+
 ## 1.2.0
 
 - **Backtesting from the sidebar panel.** A new Backtesting card downloads

@@ -43,10 +43,36 @@ if [[ -n "$STAKE_CCY" ]]; then
 fi
 
 echo ">> Resolving the current VolumePairList (uses live OKX tickers)..."
-PAIRS_JSON="$(freqtrade test-pairlist --config "$LIVE_CFG" --print-json 2>/dev/null | tail -n 1)"
-echo "$PAIRS_JSON" | jq -e 'type == "array" and length > 0' >/dev/null \
-    || { echo "Could not resolve the pairlist (is OKX reachable?)."; exit 1; }
-echo ">> $(echo "$PAIRS_JSON" | jq 'length') pairs selected."
+# Never discard freqtrade's stderr here: it is the only explanation of *why*
+# the pairlist could not be resolved, and under `set -e` a failing command
+# substitution aborts the script before any message of ours would print.
+PAIRS_OUT="$(mktemp)"
+trap 'rm -f "$PAIRS_OUT"' EXIT
+
+explain_failure() {
+    echo "!! Could not resolve the pairlist. freqtrade said:"
+    sed 's/^/   | /' "$PAIRS_OUT" | tail -n 25
+    cat <<'HINT'
+!! Common causes:
+   * the exchange is unreachable from Home Assistant (check the add-on log);
+   * an EEA account (okx_environment: myokx) asked for USDT pairs, which MiCA
+     restricts — retry with --stake-currency USDC;
+   * no pair passed the filters: lower pairlist_min_volume and/or raise
+     pairlist_max_spread_percent, then restart the add-on so the config is
+     regenerated.
+HINT
+}
+
+if ! freqtrade test-pairlist --config "$LIVE_CFG" --print-json > "$PAIRS_OUT" 2>&1; then
+    explain_failure
+    exit 1
+fi
+PAIRS_JSON="$(tail -n 1 "$PAIRS_OUT")"
+if ! jq -e 'type == "array" and length > 0' >/dev/null 2>&1 <<<"$PAIRS_JSON"; then
+    explain_failure
+    exit 1
+fi
+echo ">> $(jq 'length' <<<"$PAIRS_JSON") pairs selected."
 
 STATIC_CFG=/data/config_backtest_static.json
 jq --argjson pairs "$PAIRS_JSON" \

@@ -47,6 +47,7 @@ validate the generated configuration. Needs Docker and unfiltered internet
 access.
 
 ```bash
+freqtrade_okx/tests/test_ft_helpers.sh
 python3 freqtrade_okx/tests/test_control_server.py
 ```
 

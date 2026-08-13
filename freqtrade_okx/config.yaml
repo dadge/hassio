@@ -1,5 +1,5 @@
 name: Freqtrade OKX Rebound Bot
-version: "1.2.0"
+version: "1.2.1"
 slug: freqtrade_okx
 description: >-
   Freqtrade crypto trading bot pre-configured for OKX spot trading with a
