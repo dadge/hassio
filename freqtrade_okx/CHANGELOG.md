@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.1
+
+- **New `ft-backtest-all`**: screens every deployed strategy in one pass,
+  grouped by the timeframe each declares, because freqtrade's `--strategy-list`
+  loads the candle data once and runs the whole list against it. Skips
+  timeframe groups whose candles are not downloaded (naming the command that
+  would fetch them), always excludes the futures strategies, and excludes the
+  lookahead-bias ones unless `--include-lookahead`. `--max-pairs` (default 10)
+  trims the whitelist, since backtest cost is linear in pairs.
+- The panel's control endpoint gains a `screen` job for it, with the same
+  whitelist-everything validation as the others.
+
 ## 1.4.0
 
 - **68 community strategies bundled** from

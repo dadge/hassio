@@ -141,6 +141,29 @@ def test_failure_is_reported():
     assert any("No data found." in line for line in status["log"]), status["log"]
 
 
+def test_screen_job_rejects_bad_options():
+    """Rejection happens before any process is created, so this runs anywhere."""
+    for bad in ({"max_pairs": 0}, {"max_pairs": 500}, {"max_pairs": "5; rm -rf /"},
+                {"max_pairs": 2.5}, {"timeframes": "$(id)"}, {"timerange": "not-a-range"}):
+        payload = {"job": "screen"}
+        payload.update(bad)
+        code, body = call("POST", "/run", payload)
+        assert code == 400, "%r was accepted (%s)" % (bad, body)
+
+
+def test_screen_job_arguments():
+    if not POSIX:
+        raise Skip("needs POSIX: executes a shebang script")
+    fake_helper("ft-backtest-all", 'echo "args: $*"')
+    code, body = call("POST", "/run", {"job": "screen", "max_pairs": 5,
+                                       "timeframes": "15m 1h", "timerange": "20260201-"})
+    assert code == 202, body
+    assert body["argv"] == ["ft-backtest-all", "20260201-", "--max-pairs", "5",
+                            "--timeframes", "15m 1h"], body
+    status = wait_idle()
+    assert status["returncode"] == 0, status
+
+
 def test_child_output_is_unbuffered():
     """A file-backed stdout is block-buffered by default, which made the panel
     log lag minutes behind a running job. The child must see PYTHONUNBUFFERED."""

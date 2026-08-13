@@ -33,10 +33,12 @@ LAST_RESULT = ".last_result.json"
 LOG_TAIL_LINES = 80
 MAX_LOG_BYTES = 64 * 1024
 
-JOBS = {"download": "ft-download-data", "backtest": "ft-backtest"}
+JOBS = {"download": "ft-download-data", "backtest": "ft-backtest",
+        "screen": "ft-backtest-all"}
 STRATEGY_RE = re.compile(r"^[A-Za-z0-9_]{1,64}$")
 CURRENCIES = ("USDT", "USDC")
 TIMERANGE_RE = re.compile(r"^\d{8}-(\d{8})?$")
+TIMEFRAMES_RE = re.compile(r"^[0-9smhdMw ]{1,40}$")
 
 _lock = threading.Lock()
 _job: dict = {"name": None, "proc": None, "started": None, "finished": None, "returncode": None}
@@ -135,6 +137,20 @@ def _build_argv(payload: dict) -> list[str]:
             if not TIMERANGE_RE.match(timerange):
                 raise ValueError("timerange must look like 20260101-20260701 or 20260101-")
             argv.append(timerange)
+
+    if job == "screen":
+        pairs = payload.get("max_pairs")
+        if pairs is not None:
+            if not isinstance(pairs, int) or isinstance(pairs, bool) or not 1 <= pairs <= 200:
+                raise ValueError("max_pairs must be an integer between 1 and 200")
+            argv += ["--max-pairs", str(pairs)]
+        timeframes = payload.get("timeframes")
+        if timeframes:
+            if not TIMEFRAMES_RE.match(timeframes):
+                raise ValueError("timeframes must look like \"15m 1h\"")
+            argv += ["--timeframes", timeframes]
+        if payload.get("include_lookahead"):
+            argv.append("--include-lookahead")
 
     strategy = payload.get("strategy")
     if strategy:

@@ -38,7 +38,10 @@ setup() {
     jq -n "$CONFIG" > "$ROOT/data/config.json"
     jq -n "$CONFIG" > "$ROOT/data/config_backtest.json"
     # Rewrite the container-absolute paths into the sandbox.
-    sed -e "s#/data/#$ROOT/data/#g" "$BIN/$1" > "$ROOT/$1"
+    # Only rewrite /data/ where a path actually starts (after =, a quote or a
+    # space). A blanket rewrite also mangles "$USER_DATA/data/..." into a
+    # doubled path, which looks like a product bug and is not one.
+    sed -e "s#\([=\"' ]\)/data/#\1$ROOT/data/#g" "$BIN/$1" > "$ROOT/$1"
     chmod +x "$ROOT/$1"
 }
 shim() { printf '%s\n' "$2" > "$ROOT/bin/$1"; chmod +x "$ROOT/bin/$1"; }
@@ -165,6 +168,35 @@ rm -f "$ROOT/data/config_backtest_static.json"
 run_helper ft-backtest
 check "exits non-zero"                    "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
 check "points at ft-download-data"        "$(has "$OUT" "Run ft-download-data first")"
+
+scenario "ft-backtest-all groups strategies by timeframe and skips what it cannot run"
+setup ft-backtest-all
+mkdir -p "$ROOT/data/user_data/strategies" "$ROOT/data/user_data/data/myokx" "$ROOT/data/.addon"
+jq -n '{stake_currency:"USDC",exchange:{name:"myokx",pair_whitelist:["A/USDC","B/USDC","C/USDC"]}}' \
+    > "$ROOT/data/config_backtest_static.json"
+printf 'class X:\n    timeframe = "1h"\n' > "$ROOT/data/user_data/strategies/OneHourA.py"
+printf 'class X:\n    timeframe = "1h"\n' > "$ROOT/data/user_data/strategies/OneHourB.py"
+printf 'class X:\n    timeframe = "5m"\n' > "$ROOT/data/user_data/strategies/FiveMin.py"
+printf 'class X:\n    timeframe = "1h"\n' > "$ROOT/data/user_data/strategies/FutOne.py"
+printf 'class X:\n    timeframe = "1h"\n' > "$ROOT/data/user_data/strategies/PeekingOne.py"
+printf 'FutOne\tfutures\nPeekingOne\tlookahead_bias\n' > "$ROOT/data/.addon/community_index"
+touch "$ROOT/data/user_data/data/myokx/A_USDC-1h.feather"   # 1h present, 5m absent
+shim freqtrade '#!/usr/bin/env bash
+echo "BT: $*"'
+run_helper ft-backtest-all 20260201- --max-pairs 2
+check "succeeds"                          "$([[ $RC -eq 0 ]] && echo 0 || echo 1)"
+check "batches the 1h strategies"         "$(has "$OUT" "--strategy-list OneHourA OneHourB")"
+check "passes the timeframe"              "$(has "$OUT" "--timeframe 1h")"
+check "trims the pairlist"                "$([[ $(jq '.exchange.pair_whitelist | length' "$ROOT/data/config_backtest_screen.json") == 2 ]] && echo 0 || echo 1)"
+check "skips 5m for lack of data"         "$(has "$OUT" "SKIP 5m")"
+check "says how to get that data"         "$(has "$OUT" "ft-download-data 240 --timeframes")"
+check "excludes futures strategies"       "$(hasnt "$OUT" "FutOne")"
+check "excludes lookahead strategies"     "$(hasnt "$OUT" "PeekingOne")"
+run_helper ft-backtest-all 20260201- --include-lookahead
+check "--include-lookahead opts them in"  "$(has "$OUT" "PeekingOne")"
+check "but never futures"                 "$(hasnt "$OUT" "FutOne")"
+run_helper ft-backtest-all --max-pairs notanumber
+check "rejects a bad --max-pairs"         "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
 
 printf '\n========================================\n'
 if [[ $fails -eq 0 ]]; then printf '\033[32mALL CHECKS PASSED\033[0m\n'

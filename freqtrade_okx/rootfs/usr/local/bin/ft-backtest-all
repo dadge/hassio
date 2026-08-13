@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# Screen every deployed strategy in one pass, grouped by timeframe.
+#
+# Usage: ft-backtest-all [timerange] [--max-pairs N] [--timeframes "15m 1h"]
+#                        [--include-lookahead] [--strategies "A B C"]
+#
+#   timerange           default: the last ~3 months. A screening pass wants
+#                       speed; re-test survivors over a longer window.
+#   --max-pairs N       trim the whitelist to the N highest-volume pairs
+#                       (default 10). Backtest cost is linear in pairs.
+#   --timeframes        which timeframe groups to run (default: every group
+#                       that has downloaded data).
+#   --include-lookahead include the upstream lookahead_bias strategies. They
+#                       read future candles, so their results are fiction and
+#                       they are excluded unless you ask for them.
+#   --strategies        run exactly this list instead of auto-discovering.
+#
+# Why grouped: freqtrade's --strategy-list loads the candle data once and runs
+# every strategy in the list against it, which is far cheaper than one process
+# per strategy — but a run has a single timeframe, so strategies are grouped by
+# the timeframe they declare.
+#
+# futures/ strategies are always skipped: they short and use leverage, which
+# this spot-only add-on cannot do.
+set -Eeuo pipefail
+
+TIMERANGE=""
+MAX_PAIRS=10
+TIMEFRAMES=""
+INCLUDE_LOOKAHEAD=0
+STRATEGIES=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --max-pairs) MAX_PAIRS="${2:-}"; shift 2 ;;
+        --timeframes) TIMEFRAMES="${2:-}"; shift 2 ;;
+        --strategies) STRATEGIES="${2:-}"; shift 2 ;;
+        --include-lookahead) INCLUDE_LOOKAHEAD=1; shift ;;
+        -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+        *) TIMERANGE="$1"; shift ;;
+    esac
+done
+[[ "$MAX_PAIRS" =~ ^[0-9]+$ ]] || { echo "--max-pairs must be a number"; exit 2; }
+[[ -z "$TIMEFRAMES" || "$TIMEFRAMES" =~ ^[0-9smhdMw\ ]+$ ]] || { echo "invalid --timeframes"; exit 2; }
+[[ -z "$STRATEGIES" || "$STRATEGIES" =~ ^[A-Za-z0-9_\ ]+$ ]] || { echo "invalid --strategies"; exit 2; }
+[[ -n "$TIMERANGE" ]] || TIMERANGE="$(date -d '3 months ago' +%Y%m%d)-"
+
+USER_DATA=/data/user_data
+STATIC_CFG=/data/config_backtest_static.json
+RUN_CFG=/data/config_backtest_screen.json
+INDEX=/data/.addon/community_index
+[[ -f "$STATIC_CFG" ]] || { echo "Run ft-download-data first (it builds the static pairlist config)."; exit 1; }
+STRAT_DIR="$USER_DATA/strategies"
+DATA_DIR="$USER_DATA/data/$(jq -r '.exchange.name' "$STATIC_CFG")"
+
+# Trim the whitelist: backtest cost scales with pairs, and a screening pass
+# does not need all of them.
+jq --argjson n "$MAX_PAIRS" '.exchange.pair_whitelist |= .[0:$n]' "$STATIC_CFG" > "$RUN_CFG"
+PAIR_COUNT="$(jq '.exchange.pair_whitelist | length' "$RUN_CFG")"
+
+# --- which strategies, and at which timeframe ------------------------------
+declare -A TF_OF
+list_candidates() {
+    if [[ -n "$STRATEGIES" ]]; then
+        # shellcheck disable=SC2086  # deliberate split of a space-separated list
+        printf '%s\n' $STRATEGIES
+        return
+    fi
+    for f in "$STRAT_DIR"/*.py; do
+        [[ -e "$f" ]] || continue
+        name="$(basename "$f" .py)"
+        group="$(awk -F'\t' -v s="$name" '$1 == s {print $2}' "$INDEX" 2>/dev/null | head -n 1)"
+        [[ "$group" == "futures" ]] && continue
+        [[ "$group" == "lookahead_bias" && "$INCLUDE_LOOKAHEAD" -eq 0 ]] && continue
+        printf '%s\n' "$name"
+    done
+}
+
+for name in $(list_candidates); do
+    f="$STRAT_DIR/${name}.py"
+    [[ -f "$f" ]] || { echo "!! no such strategy: $name"; continue; }
+    tf="$(grep -m1 -oE "^[[:space:]]*timeframe[[:space:]]*=[[:space:]]*[\"'][^\"']+" "$f" \
+          | grep -oE "[\"'][^\"']+$" | tr -d "\"'" || true)"
+    [[ -n "$tf" ]] || tf="unknown"
+    TF_OF["$name"]="$tf"
+done
+
+echo "== Screening $(( ${#TF_OF[@]} )) strategies on ${PAIR_COUNT} pairs, timerange ${TIMERANGE}"
+echo "== Data: $DATA_DIR"
+
+# --- run one batch per timeframe -------------------------------------------
+STATUS=0
+for tf in $(printf '%s\n' "${TF_OF[@]}" | sort -u); do
+    [[ "$tf" == "unknown" ]] && continue
+    if [[ -n "$TIMEFRAMES" ]] && ! grep -qw -- "$tf" <<<"$TIMEFRAMES"; then continue; fi
+
+    group=()
+    for name in "${!TF_OF[@]}"; do
+        [[ "${TF_OF[$name]}" == "$tf" ]] && group+=("$name")
+    done
+    mapfile -t group < <(printf '%s\n' "${group[@]}" | sort)
+
+    if ! compgen -G "$DATA_DIR/*-${tf}.feather" > /dev/null 2>&1; then
+        echo
+        echo ">> SKIP ${tf}: no downloaded candles (${#group[@]} strategies: ${group[*]})"
+        echo "   Get them with: ft-download-data 240 --timeframes \"${tf}\""
+        continue
+    fi
+
+    echo
+    echo "======================================================================"
+    echo ">> ${tf}: ${#group[@]} strategies — ${group[*]}"
+    echo "======================================================================"
+    # One process, one data load, every strategy in the group.
+    if ! freqtrade backtesting \
+        --config "$RUN_CFG" \
+        --userdir "$USER_DATA" \
+        --strategy-list "${group[@]}" \
+        --timeframe "$tf" \
+        --timerange "$TIMERANGE"; then
+        echo "!! the ${tf} batch failed (a single broken strategy aborts its batch)."
+        echo "!! re-run it with --strategies to bisect, e.g.:"
+        echo "!!   ft-backtest-all --timeframes \"${tf}\" --strategies \"${group[*]:0:3}\""
+        STATUS=1
+    fi
+done
+
+cat <<'EOF'
+
+>> Reading the comparison table:
+   * Sort by "Tot Profit %", but do not stop there. A strategy with 4 trades
+     and a great average tells you nothing — check "Trades" first, and treat
+     anything under ~50 trades as noise.
+   * "Profit factor" below 1.0 loses money by definition.
+   * These are unreviewed community examples on ONE window of ONE market. A
+     good number here is a candidate for further testing, not a result.
+   * Next step for anything promising: re-run it alone over a longer window
+     and more pairs, then out-of-sample on a period you did not screen on.
+EOF
+exit "$STATUS"

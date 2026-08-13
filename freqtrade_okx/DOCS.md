@@ -341,6 +341,20 @@ How to read the results:
   contained `stop_loss` losses; many `max_hold_time` exits mean the dip
   filter is buying falling knives.
 
+To compare many strategies at once — for example the 68 bundled community
+examples — use the screening helper rather than one run per strategy:
+
+```bash
+ft-backtest-all                      # last 3 months, 10 pairs, all timeframes with data
+ft-backtest-all 20260101- --max-pairs 20
+ft-backtest-all --timeframes "1h"    # just the 1h group
+```
+
+It batches strategies by timeframe so the candles are loaded once per group,
+and prints Freqtrade's strategy-comparison table. Treat it as a filter, not a
+verdict: a strategy with a handful of trades tells you nothing, and a good
+number on one window of one market is a candidate for further testing.
+
 Strategy unit tests (indicator/scoring logic on synthetic dataframes):
 
 ```bash
