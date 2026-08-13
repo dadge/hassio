@@ -164,6 +164,20 @@ def test_screen_job_arguments():
     assert status["returncode"] == 0, status
 
 
+def test_screen_job_strategy_list():
+    """An explicit list is the only way to exclude a strategy that hangs a
+    batch, so it must survive validation and reach the helper."""
+    code, body = call("POST", "/run", {"job": "screen", "strategies": ["Alpha", "Beta"]})
+    if code == 202:
+        assert body["argv"][-2:] == ["--strategies", "Alpha Beta"], body
+        wait_idle()
+    else:
+        assert code in (409, 500), body
+    for bad in ("Alpha; rm -rf /", "Alpha && id", "Alpha/../x"):
+        code, body = call("POST", "/run", {"job": "screen", "strategies": bad})
+        assert code == 400, "%r was accepted (%s)" % (bad, body)
+
+
 def test_child_output_is_unbuffered():
     """A file-backed stdout is block-buffered by default, which made the panel
     log lag minutes behind a running job. The child must see PYTHONUNBUFFERED."""

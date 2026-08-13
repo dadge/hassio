@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.4.2
+
+- The panel's `screen` job accepts a `strategies` list, matching the helper's
+  `--strategies` flag. This is the only way to exclude a strategy that hangs a
+  batch: freqtrade cannot skip one mid-run, so a single pathological strategy
+  blocks every other strategy sharing its timeframe. Observed live —
+  `CustomStoplossWithPSAR` ran for over an hour on a job where the other ten
+  1h strategies took ~13 seconds each, because `custom_stoploss` is evaluated
+  per candle per open trade.
+
 ## 1.4.1
 
 - **New `ft-backtest-all`**: screens every deployed strategy in one pass,

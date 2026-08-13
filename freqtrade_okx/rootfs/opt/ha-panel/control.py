@@ -36,6 +36,7 @@ MAX_LOG_BYTES = 64 * 1024
 JOBS = {"download": "ft-download-data", "backtest": "ft-backtest",
         "screen": "ft-backtest-all"}
 STRATEGY_RE = re.compile(r"^[A-Za-z0-9_]{1,64}$")
+STRATEGY_LIST_RE = re.compile(r"^[A-Za-z0-9_ ]{1,2000}$")
 CURRENCIES = ("USDT", "USDC")
 TIMERANGE_RE = re.compile(r"^\d{8}-(\d{8})?$")
 TIMEFRAMES_RE = re.compile(r"^[0-9smhdMw ]{1,40}$")
@@ -151,6 +152,16 @@ def _build_argv(payload: dict) -> list[str]:
             argv += ["--timeframes", timeframes]
         if payload.get("include_lookahead"):
             argv.append("--include-lookahead")
+        # An explicit list is how you exclude a strategy that hangs the batch:
+        # freqtrade has no way to skip one mid-run, so a pathological strategy
+        # blocks every other strategy sharing its timeframe.
+        strategies = payload.get("strategies")
+        if strategies:
+            if isinstance(strategies, list):
+                strategies = " ".join(str(s) for s in strategies)
+            if not STRATEGY_LIST_RE.match(strategies):
+                raise ValueError("strategies must be space-separated class names")
+            argv += ["--strategies", strategies]
 
     strategy = payload.get("strategy")
     if strategy:
