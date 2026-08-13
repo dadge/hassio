@@ -8,13 +8,13 @@ STATIC_CFG=/data/config_backtest_static.json
 EPOCHS="${1:-100}"
 TIMERANGE="${2:-$(date -d '6 months ago' +%Y%m%d)-}"
 echo ">> Hyperopting ReboundStrategy (${EPOCHS} epochs, timerange ${TIMERANGE})..."
+STRATEGY="$(jq -r '.strategy // "ReboundStrategy"' /data/config.json 2>/dev/null || echo ReboundStrategy)"
 freqtrade hyperopt \
     --config "$STATIC_CFG" \
     --userdir /data/user_data \
-    --strategy ReboundStrategy \
+    --strategy "$STRATEGY" \
     --hyperopt-loss SharpeHyperOptLoss \
     --spaces buy \
-    --timeframe 1h \
     --timerange "$TIMERANGE" \
     --epochs "$EPOCHS"
 echo ">> Apply results by copying the best parameters into"

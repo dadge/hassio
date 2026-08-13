@@ -109,6 +109,35 @@ check "rejects an unsupported currency"   "$([[ $RC -ne 0 ]] && echo 0 || echo 1
 run_helper ft-download-data notanumber
 check "rejects a non-numeric day count"   "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
 
+scenario "the strategy timeframe is not overridden"
+setup ft-download-data
+# shellcheck disable=SC2016  # shim body must stay unexpanded
+shim freqtrade '#!/usr/bin/env bash
+case "$1" in
+  test-pairlist) echo "[\"BTC/USDC\"]" ;;
+  download-data) echo "DOWNLOAD-ARGS: $*" ;;
+esac'
+run_helper ft-download-data 30
+check "downloads 15m and 1h by default"   "$(has "$OUT" "--timeframes 15m 1h")"
+run_helper ft-download-data 30 --timeframes "5m"
+check "honours --timeframes"              "$(has "$OUT" "--timeframes 5m")"
+# shellcheck disable=SC2016  # the injection probe must reach the helper unexpanded
+run_helper ft-download-data 30 --timeframes '$(id)'
+check "rejects an injected timeframe"     "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
+
+setup ft-backtest
+jq -n '{stake_currency:"USDC",strategy:"MeanRevert15m"}' > "$ROOT/data/config.json"
+jq -n '{stake_currency:"USDC"}' > "$ROOT/data/config_backtest_static.json"
+shim freqtrade '#!/usr/bin/env bash
+echo "BACKTEST-ARGS: $*"'
+run_helper ft-backtest
+check "never forces a timeframe"          "$(hasnt "$OUT" "--timeframe")"
+check "uses the configured strategy"      "$(has "$OUT" "--strategy MeanRevert15m")"
+run_helper ft-backtest --strategy ReboundStrategy
+check "--strategy overrides it"           "$(has "$OUT" "--strategy ReboundStrategy")"
+run_helper ft-backtest --strategy 'evil; rm -rf /'
+check "rejects an injected strategy name" "$([[ $RC -ne 0 ]] && echo 0 || echo 1)"
+
 scenario "ft-backtest refuses data downloaded for another quote currency"
 setup ft-backtest
 jq -n '{stake_currency:"USDC"}' > "$ROOT/data/config_backtest_static.json"

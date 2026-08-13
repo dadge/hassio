@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.1
+
+- **Fix: the helpers hardcoded `--timeframe 1h`.** Backtesting MeanRevert15m
+  would have run against 1h candles instead of its own 15m, and its 1h
+  informative would have been missing entirely — a silently wrong result
+  rather than an error. `ft-backtest` and `ft-hyperopt` no longer pass a
+  timeframe at all (the strategy declares its own) and default to the
+  strategy the bot is configured with; `ft-download-data` now fetches
+  `15m 1h` by default, overridable with `--timeframes`.
+- `ft-backtest --strategy NAME` and the panel's `strategy` field let you
+  backtest a strategy other than the running one.
+
 ## 1.3.0
 
 - **New option `strategy`** — pick which strategy the bot runs, including a

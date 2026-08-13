@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Backtest ReboundStrategy on previously downloaded data (see ft-download-data).
 #
-# Usage: ft-backtest [timerange] [--stake-currency USDT|USDC]
+# Usage: ft-backtest [timerange] [--stake-currency USDT|USDC] [--strategy NAME]
 #          timerange        default: the last ~6 months, e.g. 20260201-
 #          --stake-currency backtest against a different quote currency than
 #                           the bot runs with (run ft-download-data with the
@@ -10,13 +10,18 @@ set -Eeuo pipefail
 
 TIMERANGE=""
 STAKE_CCY=""
+# Default to whatever the bot is configured to run, so the backtest matches
+# what live trading would do unless you deliberately ask for something else.
+STRATEGY="$(jq -r '.strategy // "ReboundStrategy"' /data/config.json 2>/dev/null || echo ReboundStrategy)"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --stake-currency) STAKE_CCY="${2:-}"; shift 2 ;;
+        --strategy) STRATEGY="${2:-}"; shift 2 ;;
         -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
         *) TIMERANGE="$1"; shift ;;
     esac
 done
+[[ "$STRATEGY" =~ ^[A-Za-z0-9_]+$ ]] || { echo "invalid --strategy '$STRATEGY'"; exit 2; }
 [[ -n "$TIMERANGE" ]] || TIMERANGE="$(date -d '6 months ago' +%Y%m%d)-"
 
 STATIC_CFG=/data/config_backtest_static.json
@@ -33,12 +38,13 @@ if [[ -n "$STAKE_CCY" ]]; then
     }
 fi
 
-echo ">> Backtesting ReboundStrategy on $(jq -r '.stake_currency' "$STATIC_CFG") pairs, timerange ${TIMERANGE}..."
+echo ">> Backtesting ${STRATEGY} on $(jq -r '.stake_currency' "$STATIC_CFG") pairs, timerange ${TIMERANGE}..."
+# No --timeframe: the strategy declares its own, and forcing 1h onto a 15m
+# strategy silently backtests the wrong candles.
 freqtrade backtesting \
     --config "$STATIC_CFG" \
     --userdir /data/user_data \
-    --strategy ReboundStrategy \
-    --timeframe 1h \
+    --strategy "$STRATEGY" \
     --timerange "$TIMERANGE" \
     --export trades
 

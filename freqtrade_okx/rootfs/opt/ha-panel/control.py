@@ -34,6 +34,7 @@ LOG_TAIL_LINES = 80
 MAX_LOG_BYTES = 64 * 1024
 
 JOBS = {"download": "ft-download-data", "backtest": "ft-backtest"}
+STRATEGY_RE = re.compile(r"^[A-Za-z0-9_]{1,64}$")
 CURRENCIES = ("USDT", "USDC")
 TIMERANGE_RE = re.compile(r"^\d{8}-(\d{8})?$")
 
@@ -134,6 +135,13 @@ def _build_argv(payload: dict) -> list[str]:
             if not TIMERANGE_RE.match(timerange):
                 raise ValueError("timerange must look like 20260101-20260701 or 20260101-")
             argv.append(timerange)
+
+    strategy = payload.get("strategy")
+    if strategy:
+        if not STRATEGY_RE.match(strategy):
+            raise ValueError("strategy must be a plain class name")
+        if job == "backtest":
+            argv += ["--strategy", strategy]
 
     currency = payload.get("stake_currency")
     if currency:

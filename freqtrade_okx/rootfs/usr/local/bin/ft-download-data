@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # Download OKX 1h candles for the CURRENT dynamic pairlist into /data/user_data.
 #
-# Usage: ft-download-data [days] [--stake-currency USDT|USDC]
+# Usage: ft-download-data [days] [--stake-currency USDT|USDC] [--timeframes "15m 1h"]
 #          days             default 240 (~8 months)
+#          --timeframes     which candles to fetch. Default "15m 1h" covers
+#                           both bundled strategies: ReboundStrategy trades 1h,
+#                           MeanRevert15m trades 15m and reads a 1h informative.
+#                           A strategy whose timeframe is missing here will fail
+#                           the backtest with "No data found".
 #          --stake-currency backtest against a different quote currency than
 #                           the bot is configured with. Useful on EEA accounts:
 #                           USDC books are thin and young, so a meaningful
@@ -12,14 +17,17 @@ set -Eeuo pipefail
 
 DAYS=240
 STAKE_CCY=""
+TIMEFRAMES="15m 1h"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --stake-currency) STAKE_CCY="${2:-}"; shift 2 ;;
-        -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+        --timeframes) TIMEFRAMES="${2:-}"; shift 2 ;;
+        -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
         *) DAYS="$1"; shift ;;
     esac
 done
 [[ "$DAYS" =~ ^[0-9]+$ ]] || { echo "days must be a number (got '$DAYS')"; exit 2; }
+[[ "$TIMEFRAMES" =~ ^[0-9smhdMw\ ]+$ ]] || { echo "invalid --timeframes '$TIMEFRAMES'"; exit 2; }
 
 CFG=/data/config_backtest.json
 [[ -f "$CFG" ]] || { echo "Backtest config not found — start the add-on once first."; exit 1; }
@@ -79,10 +87,12 @@ jq --argjson pairs "$PAIRS_JSON" \
    '.exchange.pair_whitelist = $pairs | .pairlists = [{method: "StaticPairList"}]' \
    "$CFG" > "$STATIC_CFG"
 
-echo ">> Downloading ${DAYS} days of 1h OHLCV (OKX serves only 100 candles per call — this takes a while)..."
+echo ">> Downloading ${DAYS} days of ${TIMEFRAMES} OHLCV..."
+echo ">> OKX serves 100 candles per call, so 15m data costs ~4x what 1h does."
+# shellcheck disable=SC2086  # deliberate word splitting: one flag, several timeframes
 freqtrade download-data \
     --config "$STATIC_CFG" \
     --userdir /data/user_data \
-    --timeframe 1h \
+    --timeframes $TIMEFRAMES \
     --days "$DAYS"
 echo ">> Done. Data stored in /data/user_data/data/."
