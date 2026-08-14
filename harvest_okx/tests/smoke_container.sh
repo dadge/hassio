@@ -15,7 +15,12 @@ set -Eeuo pipefail
 IMAGE=harvest_okx:smoke
 ADDON="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"; MSYS_NO_PATHCONV=1 docker rm -f harvest-smoke >/dev/null 2>&1 || true' EXIT
+cleanup() {
+    MSYS_NO_PATHCONV=1 docker rm -f harvest-smoke >/dev/null 2>&1 || true
+    scrub_data                      # root-owned /data/.addon, see above
+    rm -rf "$WORK" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 # Docker Desktop on Git Bash rewrites absolute paths; MSYS_NO_PATHCONV stops it
 # mangling CONTAINER-side paths (/bin/bash, /data). Same helper as
@@ -26,6 +31,16 @@ dk() { MSYS_NO_PATHCONV=1 docker "$@"; }
 # by hand, because Docker Desktop is a Windows binary and cannot read /d/... .
 # A no-op everywhere cygpath does not exist, i.e. on Linux and in CI.
 hp() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
+
+# The add-on runs as root and creates /data/.addon mode 700, so on Linux an
+# unprivileged host user cannot delete it afterwards -- `rm -rf` fails with
+# EACCES. Docker Desktop for Windows masks ownership on bind mounts and a plain
+# rm works there, which is why this only ever broke in CI. Delete it from inside
+# a container, which has the ownership to do so.
+scrub_data() {
+    dk run --rm --network none -v "$(hp "$WORK"):/w" --entrypoint sh "$IMAGE" \
+        -c 'rm -rf /w/data' >/dev/null 2>&1 || true
+}
 
 pass() { printf '  PASS  %s\n' "$1"; }
 fail() { printf '  FAIL  %s  %s\n' "$1" "${2:-}"; FAILED=1; }
@@ -146,7 +161,8 @@ expect "bot starts in dry-run after update" "STUB_OK mode=dry-run" "$out"
 
 echo
 echo "[panel served]"
-rm -rf "$WORK/data"; mkdir -p "$WORK/data"
+scrub_data
+mkdir -p "$WORK/data"
 base_opts > "$WORK/data/options.json"
 dk run -d --name harvest-smoke --network none -v "$(hp "$WORK/data"):/data" \
     -e ADDON_VERSION=0.1.0 "$IMAGE" >/dev/null
