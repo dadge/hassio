@@ -71,7 +71,8 @@ that is actually predictable, and it is the part the harvest formula depends on.
 |---|---|---|
 | `mode` | `dry-run` | `dry-run` = paper. `live` = real orders. |
 | `i_understand_live_trading` | `false` | Must be `true` for `live` to start. |
-| `okx_environment` | `okx` | `myokx` for the EEA entity. |
+| `okx_environment` | `okx` | `myokx` for the EEA entity. **Hostname only** — it does not change which pairs are traded. |
+| `quote_currency` | `USDT` | Currency the book is priced in; only pairs quoted in it are traded. |
 | `okx_api_key` / `_secret` / `_passphrase` | empty | Required for `live` only. |
 | `basket_size` | `10` | Assets held. Below ~5, one asset's drift dominates. |
 | `target_exposure_pct` | `50` | % of wallet in crypto; rest is cash. |
@@ -83,6 +84,23 @@ that is actually predictable, and it is the part the harvest formula depends on.
 | `paper_wallet_usdt` | `1000` | Starting paper balance. |
 | `live_max_deployed_usdt` | `100` | **Hard cap on money at risk in live mode.** |
 | `check_interval_minutes` | `15` | How often drift is measured. |
+
+### Choosing `quote_currency`
+
+`USDT` or `USDC`. This is the only setting that decides which pairs are traded
+— `okx_environment` merely selects the API hostname (`my.okx.com` for the EEA
+entity) and has no bearing on it.
+
+OKX lists far fewer USDC spot pairs than USDT ones, so a USDC basket is picked
+from a much smaller universe, which weakens the selection: the whole point is to
+choose the most volatile names out of a wide field. After switching, check the
+add-on log for the line reporting how many pairs survived the volume filter —
+if it is not comfortably larger than `basket_size`, the bot is holding
+near-enough whatever exists rather than the most volatile names, and you should
+lower `min_volume_usdt` or stay on USDT.
+
+The `*_usdt` option names are historical: those amounts are denominated in
+whichever quote currency you select.
 
 ### Choosing `target_exposure_pct`
 

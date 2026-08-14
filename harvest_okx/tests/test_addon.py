@@ -45,8 +45,13 @@ def main() -> int:
     print("\n[manifest]")
     check("slug matches directory", cfg.get("slug") == "harvest_okx", str(cfg.get("slug")))
     check("ingress enabled", cfg.get("ingress") is True)
-    check("ingress_port matches the bot's listener", cfg.get("ingress_port") == 8099,
-          str(cfg.get("ingress_port")))
+    # The add-on linter rejects ingress_port when it merely restates the
+    # default, so the manifest omits it -- but the port the bot binds must
+    # still match whatever the Supervisor ends up using.
+    effective_port = cfg.get("ingress_port", 8099)
+    bot_src = (ADDON / "rootfs" / "opt" / "harvest" / "bot.py").read_text(encoding="utf-8")
+    check("the bot binds the effective ingress port",
+          f'("0.0.0.0", {effective_port})' in bot_src, f"expected port {effective_port}")
     sibling = REPO / "freqtrade_okx" / "config.yaml"
     if sibling.exists():
         # Two add-ons sharing a slug would collide in the store; only worth

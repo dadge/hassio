@@ -161,7 +161,10 @@ class Harvester:
         self.cfg = cfg
         self.state = state
         self.live = cfg["mode"] == "live"
-        self.quote = "USDT"
+        # The currency the book is denominated in and the cash leg is held in.
+        # Note this is independent of okx_environment, which only selects the
+        # API hostname (the EEA entity) and has no bearing on which pairs exist.
+        self.quote = cfg.get("quote_currency") or "USDT"
         self.fee = 0.001                     # OKX spot taker, worst tier
         self.exchange = self._build_exchange()
         self.force_rebalance = threading.Event()
@@ -189,19 +192,31 @@ class Harvester:
         markets = self.exchange.load_markets()
         tickers = self.exchange.fetch_tickers()
         candidates = []
+        quoted = 0
+        no_volume = 0
         for sym, m in markets.items():
             if not (m.get("spot") and m.get("active")):
                 continue
             if m.get("quote") != self.quote:
                 continue
+            quoted += 1
             t = tickers.get(sym) or {}
-            vol = t.get("quoteVolume") or 0.0
+            vol = t.get("quoteVolume")
+            if vol is None:
+                # Counted separately: a pair the exchange reports no volume for
+                # is indistinguishable here from a genuinely illiquid one, and
+                # if this number is large the filter is discarding the universe
+                # rather than screening it.
+                no_volume += 1
+                vol = 0.0
             if vol < self.cfg["min_volume_usdt"]:
                 continue
             candidates.append(sym)
 
-        log.info("Universe: %d liquid %s spot pairs above %.0f volume",
-                 len(candidates), self.quote, self.cfg["min_volume_usdt"])
+        log.info("Universe: %d active %s spot pairs, %d above %.0f 24h volume"
+                 "%s", quoted, self.quote, len(candidates),
+                 self.cfg["min_volume_usdt"],
+                 f" ({no_volume} reported no volume)" if no_volume else "")
 
         lookback = int(self.cfg["volatility_lookback_days"])
         bars = min(int(lookback * 6), 300)          # 4h candles -> 6/day
@@ -496,6 +511,7 @@ def make_handler(bot: Harvester, state: State, cfg: dict):
                     start = d["wallet_start"] or 1.0
                     self._json({
                         "mode": d["mode"], "paused": d["paused"],
+                        "quote": bot.quote,
                         "equity": total, "cash": d["cash"],
                         "wallet_start": d["wallet_start"],
                         "pnl_pct": (total / start - 1) * 100 if start else 0.0,

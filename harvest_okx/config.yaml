@@ -1,5 +1,5 @@
 name: OKX Volatility Harvester
-version: "0.1.0"
+version: "0.2.0"
 slug: harvest_okx
 description: >-
   Constant-weight rebalancing bot for OKX spot. Earns the volatility harvest
@@ -9,19 +9,17 @@ url: https://github.com/dadge/hassio/tree/master/harvest_okx
 arch:
   - amd64
   - aarch64
-  - armv7
 startup: services
-boot: auto
 hassio_api: true
 homeassistant_api: true
 ingress: true
-ingress_port: 8099
 panel_icon: mdi:chart-timeline-variant
 panel_title: Harvester
 options:
   mode: dry-run
   i_understand_live_trading: false
   okx_environment: okx
+  quote_currency: USDT
   okx_api_key: ""
   okx_api_secret: ""
   okx_api_passphrase: ""
@@ -42,6 +40,10 @@ schema:
   mode: list(dry-run|live)
   i_understand_live_trading: bool
   okx_environment: list(okx|myokx)
+  # Independent of okx_environment, which only picks the API hostname.
+  # USDC has far fewer spot pairs on OKX than USDT, so a USDC basket is
+  # selected from a much smaller universe.
+  quote_currency: list(USDT|USDC)
   okx_api_key: password?
   okx_api_secret: password?
   okx_api_passphrase: password?

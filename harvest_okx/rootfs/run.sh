@@ -97,7 +97,8 @@ fi
 # the API secret never shows up in `ps` output.
 jq '{
       mode: $mode,
-      okx_environment, okx_api_key, okx_api_secret, okx_api_passphrase,
+      okx_environment, quote_currency,
+      okx_api_key, okx_api_secret, okx_api_passphrase,
       basket_size, target_exposure_pct, rebalance_band_pct,
       volatility_lookback_days, reselect_days, min_volume_usdt, min_order_usdt,
       paper_wallet_usdt, live_max_deployed_usdt, check_interval_minutes,

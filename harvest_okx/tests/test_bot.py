@@ -6,7 +6,7 @@ needs a live venue is a test that fails for reasons unrelated to the code. The
 stub serves deterministic price paths, which also lets the accounting be
 asserted exactly rather than approximately.
 
-Run:  python tests/test_harvest_bot.py
+Run:  python harvest_okx/tests/test_bot.py
 """
 
 from __future__ import annotations
@@ -43,8 +43,11 @@ class FakeExchange:
         self.hostname = ""
 
     def load_markets(self):
-        return {s: {"spot": True, "active": True, "quote": "USDT",
-                    "base": s.split("/")[0]} for s in self.prices}
+        # Quote derived from the symbol, not hardcoded: the pair filter under
+        # test reads exactly this field.
+        return {s: {"spot": True, "active": True,
+                    "base": s.split("/")[0], "quote": s.split("/")[1]}
+                for s in self.prices}
 
     def fetch_tickers(self, symbols=None):
         syms = symbols or list(self.prices)
@@ -96,7 +99,9 @@ def new_bot(mod, cfg, prices, series=None, cash=1000.0):
     bot = mod.Harvester.__new__(mod.Harvester)
     bot.cfg, bot.state = cfg, state
     bot.live = cfg["mode"] == "live"
-    bot.quote, bot.fee = "USDT", 0.001
+    # Mirror __init__, which this bypasses via __new__.
+    bot.quote = cfg.get("quote_currency") or "USDT"
+    bot.fee = 0.001
     bot.exchange = FakeExchange(prices, series)
     import threading
     bot.force_rebalance = threading.Event()
@@ -119,6 +124,27 @@ def test_selection_ranks_by_volatility(mod):
     picks = bot.select_basket()
     check("WILD selected first", picks and picks[0] == "WILD/USDT", f"got {picks}")
     check("QUIET (best return, lowest vol) excluded", "QUIET/USDT" not in picks, f"got {picks}")
+
+
+def test_quote_currency_is_honoured(mod):
+    print("\n[quote] the configured quote currency selects the pairs")
+    # Mixed book. Selecting USDC must ignore the USDT pairs entirely, and the
+    # setting most easily confused for this one -- okx_environment, which only
+    # picks an API hostname -- must not affect it.
+    n = 200
+    series, prices = {}, {}
+    for sym in ("AAA/USDT", "BBB/USDT", "AAA/USDC", "BBB/USDC"):
+        s = [100 * math.exp(0.4 * math.sin(i / 5.0)) for i in range(n)]
+        series[sym], prices[sym] = s, s[-1]
+
+    for quote in ("USDT", "USDC"):
+        bot, _ = new_bot(mod, base_cfg(basket_size=2, quote_currency=quote), prices, series)
+        picks = bot.select_basket()
+        check(f"quote_currency={quote} selects only {quote} pairs",
+              bool(picks) and all(p.endswith("/" + quote) for p in picks), f"got {picks}")
+
+    bot, _ = new_bot(mod, base_cfg(okx_environment="myokx"), prices, series)
+    check("myokx alone does not change the quote currency", bot.quote == "USDT", bot.quote)
 
 
 def test_rebalance_hits_target(mod):
@@ -268,6 +294,7 @@ def main() -> int:
         tmp = Path(td)
         mod = load_bot(tmp)
         test_selection_ranks_by_volatility(mod)
+        test_quote_currency_is_honoured(mod)
         test_rebalance_hits_target(mod)
         test_accounting_conserves_value(mod)
         test_band_controls_trading(mod)

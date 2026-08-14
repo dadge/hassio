@@ -21,7 +21,7 @@ of trying to predict prices:
 > the same assets; it does **not** make a falling market profitable, and the
 > deployed amount can be lost. Read the Documentation tab first.
 
-Architectures: `amd64`, `aarch64`, `armv7`. The image is built locally on first
+Architectures: `amd64`, `aarch64` (`armv7` was dropped by Home Assistant 2025.12). The image is built locally on first
 install (based on `python:3.12-slim`; the only dependency is `ccxt`).
 
 Full documentation, including the maths and how to choose exposure and band:

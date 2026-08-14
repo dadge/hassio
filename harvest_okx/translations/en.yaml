@@ -16,6 +16,14 @@ configuration:
     description: >-
       'okx' for okx.com accounts, 'myokx' if you registered on my.okx.com
       (OKX EEA — common for EU users).
+  quote_currency:
+    name: Quote currency
+    description: >-
+      The currency the portfolio is priced in and the cash leg is held in:
+      only pairs quoted in it are traded. Independent of the OKX environment
+      setting, which merely picks the API hostname. OKX lists far fewer USDC
+      spot pairs than USDT, so a USDC basket is chosen from a much smaller
+      universe — check the add-on log after switching.
   okx_api_key:
     name: OKX API key
     description: >-

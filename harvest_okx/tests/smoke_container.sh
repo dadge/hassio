@@ -149,11 +149,13 @@ echo "[panel served]"
 rm -rf "$WORK/data"; mkdir -p "$WORK/data"
 base_opts > "$WORK/data/options.json"
 dk run -d --name harvest-smoke --network none -v "$(hp "$WORK/data"):/data" \
-    -e ADDON_VERSION=0.1.0 -p 18099:8099 "$IMAGE" >/dev/null
-sleep 8
-# The bot binds :8099 but only answers the ingress IP, so a request from the
-# host must be refused -- that refusal IS the security property under test.
-code="$(dk exec harvest-smoke python3 -c '
+    -e ADDON_VERSION=0.1.0 "$IMAGE" >/dev/null
+
+# Poll rather than sleep a fixed interval. Importing ccxt costs several seconds
+# and the bot does it before binding, so any constant is either too short on a
+# cold CI runner or wasted time locally.
+probe() {
+    dk exec harvest-smoke python3 -c '
 import urllib.request, urllib.error
 try:
     urllib.request.urlopen("http://127.0.0.1:8099/api/status", timeout=5)
@@ -161,8 +163,26 @@ try:
 except urllib.error.HTTPError as e:
     print(e.code)
 except Exception as e:
-    print("ERR", e)' 2>&1 | tail -1)"
-if [[ "$code" == "403" ]]; then pass "non-ingress client is refused (403)"; else fail "non-ingress client is refused" "got: $code"; fi
+    print("ERR", e)' 2>&1 | tail -1
+}
+
+code=""
+for _ in $(seq 1 40); do          # up to ~120s
+    code="$(probe)"
+    [[ "$code" == "403" ]] && break
+    sleep 3
+done
+
+# The bot binds :8099 but only answers the ingress IP, so a request from
+# anywhere else must be refused -- that refusal IS the property under test.
+if [[ "$code" == "403" ]]; then
+    pass "non-ingress client is refused (403)"
+else
+    # Dump the container's own output: a bare "got: ERR ..." is not enough to
+    # diagnose this from a CI log after the fact.
+    fail "non-ingress client is refused" "got: $code"
+    printf '  --- container log ---\n%s\n  ---\n' "$(dk logs harvest-smoke 2>&1 | tail -30)"
+fi
 expect "panel listener started" "Ingress panel listening" "$(dk logs harvest-smoke 2>&1)"
 
 echo

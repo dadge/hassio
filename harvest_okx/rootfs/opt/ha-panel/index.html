@@ -213,12 +213,13 @@ async function refresh() {
   b.textContent = (live ? "LIVE — REAL MONEY" : "PAPER TRADING")
     + (s.paused ? " · PAUSED" : "");
 
-  el("k-equity").textContent = fmt(s.equity) + " USDT";
+  const q = s.quote || "USDT";
+  el("k-equity").textContent = fmt(s.equity) + " " + q;
   signed(el("k-pnl"), s.pnl_pct, fmt(s.pnl_pct) + "%");
-  el("k-cash").textContent = fmt(s.cash) + " USDT";
+  el("k-cash").textContent = fmt(s.cash) + " " + q;
   el("k-invested").textContent = fmt(s.invested_pct, 1) + "% / " + fmt(s.target_exposure_pct, 0) + "%";
   el("k-rebal").textContent = s.rebalances;
-  el("k-fees").textContent = fmt(s.fees_paid) + " USDT";
+  el("k-fees").textContent = fmt(s.fees_paid) + " " + q;
 
   drawChart(s.history);
   drawLegs(s.legs, (s.band_pct || 1) / 100);
