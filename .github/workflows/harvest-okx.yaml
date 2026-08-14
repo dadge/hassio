@@ -1,0 +1,65 @@
+name: harvest_okx
+
+# Scoped to this add-on so the other add-ons in the repository are unaffected.
+on:
+  push:
+    paths:
+      - "harvest_okx/**"
+      - ".github/workflows/harvest-okx.yaml"
+  pull_request:
+    paths:
+      - "harvest_okx/**"
+      - ".github/workflows/harvest-okx.yaml"
+  workflow_dispatch:
+
+jobs:
+  addon-lint:
+    name: Add-on lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Run Home Assistant add-on linter
+        uses: frenck/action-addon-linter@v2
+        with:
+          path: ./harvest_okx
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: ./harvest_okx
+
+  engine-tests:
+    name: Rebalancing engine + manifest tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      # The tests stub the exchange and never touch the network, but bot.py
+      # imports ccxt at module scope so it has to be importable. Pinned to the
+      # same range as the Dockerfile. PyYAML is for the manifest checks.
+      - name: Install test dependencies
+        run: pip install pyyaml "ccxt==4.4.*"
+      - name: Run engine tests
+        run: python3 harvest_okx/tests/test_bot.py
+      - name: Run add-on manifest checks
+        run: python3 harvest_okx/tests/test_addon.py
+
+  container-smoke:
+    name: Container smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Build the image and run the real entrypoint
+        run: harvest_okx/tests/smoke_container.sh

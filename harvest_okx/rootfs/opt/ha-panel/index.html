@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Harvester</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --text: #1c1e21; --muted: #6b7280;
+    --border: #e5e7eb; --green: #16a34a; --red: #dc2626; --blue: #2563eb;
+    --amber: #d97706;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111318; --card: #1c1f26; --text: #e8eaed; --muted: #9aa0a6;
+      --border: #2d313a; --green: #34d399; --red: #f87171; --blue: #60a5fa;
+      --amber: #fbbf24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 16px; }
+  .wrap { max-width: 900px; margin: 0 auto; display: grid; gap: 12px; }
+  .banner { border-radius: 10px; padding: 10px 16px; font-weight: 700; letter-spacing: .04em; text-align: center; color: #fff; }
+  .banner.dry { background: var(--blue); }
+  .banner.live { background: var(--red); }
+  .banner.off { background: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .kpi .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .kpi .value { font-size: 20px; font-weight: 600; margin-top: 2px; }
+  .pos { color: var(--green); } .neg { color: var(--red); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .tablebox { overflow-x: auto; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  button { border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 8px; padding: 8px 14px; font-weight: 600; cursor: pointer; }
+  button:hover { border-color: var(--blue); }
+  button.danger:hover { border-color: var(--red); color: var(--red); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .muted { color: var(--muted); }
+  .err { color: var(--red); font-weight: 600; }
+  h2 { font-size: 14px; margin: 0 0 8px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  footer { color: var(--muted); font-size: 12px; }
+  code { background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+  /* Drift bar: target sits at the centre line, the fill shows how far the leg
+     has wandered, and it turns amber once it is outside the rebalance band. */
+  .bar { position: relative; height: 8px; background: var(--bg); border-radius: 4px; min-width: 120px; }
+  .bar .mid { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
+  .bar .fill { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: var(--blue); }
+  .bar .fill.out { background: var(--amber); }
+  svg { display: block; width: 100%; height: 120px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="banner" class="banner off">CONNECTING…</div>
+
+  <div class="card">
+    <div class="grid">
+      <div class="kpi"><div class="label">Equity</div><div class="value" id="k-equity">–</div></div>
+      <div class="kpi"><div class="label">P&amp;L</div><div class="value" id="k-pnl">–</div></div>
+      <div class="kpi"><div class="label">Cash</div><div class="value" id="k-cash">–</div></div>
+      <div class="kpi"><div class="label">Invested</div><div class="value" id="k-invested">–</div></div>
+      <div class="kpi"><div class="label">Rebalances</div><div class="value" id="k-rebal">–</div></div>
+      <div class="kpi"><div class="label">Fees paid</div><div class="value" id="k-fees">–</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Equity</h2>
+    <svg id="chart" viewBox="0 0 600 120" preserveAspectRatio="none"></svg>
+    <div class="muted" id="chart-note">–</div>
+  </div>
+
+  <div class="card">
+    <h2>Basket</h2>
+    <div class="tablebox">
+      <table>
+        <thead><tr>
+          <th>Asset</th><th class="num">Price</th><th class="num">Value</th>
+          <th class="num">Weight</th><th class="num">Target</th><th>Drift</th>
+        </tr></thead>
+        <tbody id="legs"><tr><td colspan="6" class="muted">loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="muted" id="selected-note" style="margin-top:8px">–</div>
+  </div>
+
+  <div class="card">
+    <h2>Controls</h2>
+    <div class="actions">
+      <button id="btn-pause">Pause</button>
+      <button id="btn-resume">Resume</button>
+      <button id="btn-rebal">Rebalance now</button>
+      <button id="btn-reset" class="danger">Reset paper portfolio</button>
+    </div>
+    <div class="muted" style="margin-top:8px">
+      Switching to real trading is a configuration change, not a button:
+      set <code>mode: live</code> and <code>i_understand_live_trading: true</code>
+      in the add-on <strong>Configuration</strong> tab, then restart.
+    </div>
+    <div id="ctl-msg" class="muted" style="margin-top:6px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Activity</h2>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>When</th><th>Kind</th><th>Message</th></tr></thead>
+        <tbody id="events"><tr><td colspan="3" class="muted">loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>
+    <span id="foot">–</span>
+  </footer>
+</div>
+
+<script>
+"use strict";
+// Ingress serves this page under a path prefix that varies per session, so all
+// API calls must stay relative — an absolute "/api/..." would escape it.
+const api = (p) => new URL(p, document.baseURI).toString();
+const fmt = (v, d = 2) => (v === null || v === undefined || isNaN(v)) ? "–" : Number(v).toFixed(d);
+const pct = (v, d = 2) => (v === null || v === undefined || isNaN(v)) ? "–" : (v * 100).toFixed(d) + "%";
+const el = (id) => document.getElementById(id);
+// Timestamps arrive as ISO-8601 UTC; show them as "YYYY-MM-DD HH:MM" — the
+// trailing "+00:00" is noise on a panel that only ever displays UTC.
+const when = (iso) => iso ? iso.replace("T", " ").replace(/(\+00:00|Z)$/, "").slice(0, 16) : "–";
+
+function signed(node, value, text) {
+  node.textContent = text;
+  node.classList.toggle("pos", value > 0);
+  node.classList.toggle("neg", value < 0);
+}
+
+function drawChart(history) {
+  const svg = el("chart");
+  svg.innerHTML = "";
+  if (!history || history.length < 2) {
+    el("chart-note").textContent = "not enough history yet";
+    return;
+  }
+  const vals = history.map(h => h[1]);
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = (hi - lo) || 1;
+  const pts = vals.map((v, i) => {
+    const x = (i / (vals.length - 1)) * 600;
+    const y = 115 - ((v - lo) / span) * 110;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  const up = vals[vals.length - 1] >= vals[0];
+  const ns = "http://www.w3.org/2000/svg";
+  const line = document.createElementNS(ns, "polyline");
+  line.setAttribute("points", pts);
+  line.setAttribute("fill", "none");
+  line.setAttribute("stroke", up ? "var(--green)" : "var(--red)");
+  line.setAttribute("stroke-width", "2");
+  line.setAttribute("vector-effect", "non-scaling-stroke");
+  svg.appendChild(line);
+  el("chart-note").textContent =
+    `${history.length} points · low ${fmt(lo)} · high ${fmt(hi)} · since ${when(history[0][0])}`;
+}
+
+function drawLegs(legs, band) {
+  const tb = el("legs");
+  if (!legs || !legs.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="muted">no basket selected yet</td></tr>';
+    return;
+  }
+  tb.innerHTML = "";
+  for (const leg of legs) {
+    const drift = leg.weight - leg.target;
+    const out = Math.abs(drift) > band;
+    // Half-width of the bar represents 3 bands, so a leg at the trigger point
+    // fills a third of its side — readable without a scale label.
+    const scale = Math.max(band * 3, 0.001);
+    const frac = Math.max(-1, Math.min(1, drift / scale));
+    const w = Math.abs(frac) * 50;
+    const left = frac >= 0 ? 50 : 50 - w;
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td>${leg.symbol.split("/")[0]}</td>` +
+      `<td class="num">${fmt(leg.price, leg.price < 1 ? 6 : 2)}</td>` +
+      `<td class="num">${fmt(leg.value)}</td>` +
+      `<td class="num">${pct(leg.weight)}</td>` +
+      `<td class="num">${pct(leg.target)}</td>` +
+      `<td><div class="bar"><div class="mid"></div>` +
+      `<div class="fill${out ? " out" : ""}" style="left:${left}%;width:${w}%"></div></div></td>`;
+    tb.appendChild(tr);
+  }
+}
+
+async function refresh() {
+  let s;
+  try {
+    const r = await fetch(api("api/status"), { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    s = await r.json();
+  } catch (e) {
+    const b = el("banner");
+    b.className = "banner off";
+    b.textContent = "DISCONNECTED — " + e.message;
+    return;
+  }
+
+  const b = el("banner");
+  const live = s.mode === "live";
+  b.className = "banner " + (live ? "live" : "dry");
+  b.textContent = (live ? "LIVE — REAL MONEY" : "PAPER TRADING")
+    + (s.paused ? " · PAUSED" : "");
+
+  el("k-equity").textContent = fmt(s.equity) + " USDT";
+  signed(el("k-pnl"), s.pnl_pct, fmt(s.pnl_pct) + "%");
+  el("k-cash").textContent = fmt(s.cash) + " USDT";
+  el("k-invested").textContent = fmt(s.invested_pct, 1) + "% / " + fmt(s.target_exposure_pct, 0) + "%";
+  el("k-rebal").textContent = s.rebalances;
+  el("k-fees").textContent = fmt(s.fees_paid) + " USDT";
+
+  drawChart(s.history);
+  drawLegs(s.legs, (s.band_pct || 1) / 100);
+
+  el("selected-note").textContent = s.selected_at
+    ? `basket selected ${when(s.selected_at)} · rebalance band ${fmt(s.band_pct, 1)}%`
+    : "basket not selected yet";
+
+  const ev = el("events");
+  ev.innerHTML = "";
+  for (const e of (s.events || [])) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td class="muted">${when(e.at)}</td><td>${e.kind}</td><td>${e.message}</td>`;
+    if (e.kind === "error") tr.classList.add("err");
+    ev.appendChild(tr);
+  }
+  if (!ev.children.length) ev.innerHTML = '<tr><td colspan="3" class="muted">nothing yet</td></tr>';
+
+  el("btn-pause").disabled = s.paused;
+  el("btn-resume").disabled = !s.paused;
+  el("btn-reset").disabled = live;
+
+  el("foot").textContent =
+    `v${s.version} · last check ${when(s.last_check)}`
+    + (s.last_error ? ` · last error: ${s.last_error}` : "");
+}
+
+async function post(path, confirmText) {
+  if (confirmText && !window.confirm(confirmText)) return;
+  const msg = el("ctl-msg");
+  try {
+    const r = await fetch(api(path), { method: "POST" });
+    const j = await r.json().catch(() => ({}));
+    msg.textContent = j.ok ? "done" : ("failed: " + (j.error || r.status));
+  } catch (e) {
+    msg.textContent = "failed: " + e.message;
+  }
+  refresh();
+}
+
+el("btn-pause").onclick  = () => post("api/pause");
+el("btn-resume").onclick = () => post("api/resume");
+el("btn-rebal").onclick  = () => post("api/rebalance", "Rebalance every leg back to target now?");
+el("btn-reset").onclick  = () => post("api/reset", "Erase the paper portfolio and start again from the configured wallet?");
+
+refresh();
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+# Plain multi-arch Python base; the bot's only dependency is ccxt, installed in
+# the Dockerfile. Bump this tag and `version` in config.yaml together — note
+# that every add-on update forces the bot back to dry-run mode.
+build_from:
+  amd64: python:3.12-slim
+  aarch64: python:3.12-slim
+  armv7: python:3.12-slim

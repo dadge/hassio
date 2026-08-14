@@ -15,14 +15,24 @@ https://github.com/dadge/hassio
 | Add-on | Description |
 | ------ | ----------- |
 | [Freqtrade OKX Rebound Bot](./freqtrade_okx/) | [Freqtrade](https://www.freqtrade.io) `2026.7` for OKX **spot** trading with a dip-rebound strategy, an ingress control panel, optional FreqUI, and Home Assistant notifications. Dry-run by default. |
+| [OKX Volatility Harvester](./harvest_okx/) | Constant-weight rebalancing across the most volatile liquid OKX **spot** pairs. Earns the volatility harvest (`sigma²/8`) rather than forecasting price, with an ingress control panel and Home Assistant notifications. Paper trading by default. |
 | [binance-bot-dashboard](./binance-bot-dashboard/) | Dashboard for the Binance bot. |
 | [shairport_sync](./shairport_sync/) | AirPlay audio receiver. |
 
-> ⚠️ **`freqtrade_okx` trades cryptocurrency.** No win rate is guaranteed and
-> the entire budget you allocate to it can be lost. It starts in dry-run mode
-> and going live requires a deliberate double confirmation — read its
-> Documentation tab, especially *Security* and the *dry-run → backtest → live*
-> workflow, before configuring anything.
+The two trading add-ons take opposite approaches. `freqtrade_okx` predicts — it
+looks for dips likely to rebound. `harvest_okx` predicts nothing: it holds a
+fixed basket at fixed weights and profits from trading back to those weights as
+prices move.
+
+> ⚠️ **`freqtrade_okx` and `harvest_okx` trade cryptocurrency.** No win rate is
+> guaranteed and the entire budget you allocate to them can be lost. Both start
+> in dry-run/paper mode and going live requires a deliberate double
+> confirmation — read the relevant Documentation tab, especially *Security* and
+> the *dry-run → backtest → live* workflow, before configuring anything.
+>
+> `harvest_okx` earns a **relative** edge: on the data it was designed against
+> it turned −14.0% into −10.6% in a falling market. It beats holding the same
+> assets; it does not make a falling market profitable.
 
 ## Tests
 
@@ -57,3 +67,30 @@ skipped (visibly) on Windows.
 
 The strategy's own unit tests need Freqtrade and TA-Lib, so they run inside the
 add-on container via `ft-test-strategy` (see the add-on documentation).
+
+`harvest_okx` ships its own suites too:
+
+```bash
+python3 harvest_okx/tests/test_bot.py
+python3 harvest_okx/tests/test_addon.py
+```
+
+The first exercises the rebalancing engine against a stubbed exchange:
+volatility-based selection (and its refusal to rank on past returns), weights
+landing on target, value conserved to the cent, no-trade band behaviour, the
+live deployment cap, state surviving a restart, and an end-to-end run showing
+rebalancing beat holding the same basket. The second is static checks on the
+add-on — options/schema/translations agreement, the entrypoint's safety gates,
+ingress-relative API calls in the panel, valid icon/logo, and that `run.sh`
+passes every config key the bot actually reads. Needs `pyyaml` and `ccxt`
+(imported, never called); no network, no API keys.
+
+```bash
+harvest_okx/tests/smoke_container.sh
+```
+
+Builds the image and runs the real entrypoint inside it against a fake `/data`:
+live mode refused without confirmation and without credentials, forced dry-run
+after a version bump, no credential value reaching the log, and the panel
+answering only the Home Assistant ingress gateway. Needs Docker; it never
+places an order.

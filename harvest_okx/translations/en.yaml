@@ -1,0 +1,92 @@
+---
+configuration:
+  mode:
+    name: Trading mode
+    description: >-
+      dry-run = paper trading (default, safe). live = REAL money on your OKX
+      account — also requires 'I understand live trading'. Forced back to
+      dry-run after every add-on update.
+  i_understand_live_trading:
+    name: I understand live trading
+    description: >-
+      Explicit confirmation for live mode. The bot trades real funds and the
+      entire deployed amount can be lost.
+  okx_environment:
+    name: OKX environment
+    description: >-
+      'okx' for okx.com accounts, 'myokx' if you registered on my.okx.com
+      (OKX EEA — common for EU users).
+  okx_api_key:
+    name: OKX API key
+    description: >-
+      Only needed for live mode. Grant trade permission only — never
+      withdrawal. Paper mode uses public market data and needs no key.
+  okx_api_secret:
+    name: OKX API secret
+    description: Only needed for live mode.
+  okx_api_passphrase:
+    name: OKX API passphrase
+    description: The passphrase you set when creating the OKX API key.
+  basket_size:
+    name: Basket size
+    description: >-
+      How many assets to hold, equally weighted. Below about 5 a single
+      asset's price drift dominates the result; above 20 each leg may fall
+      under the exchange minimum order size on a small wallet.
+  target_exposure_pct:
+    name: Target exposure (%)
+    description: >-
+      Percentage of the wallet held in crypto; the rest stays in USDT. The
+      harvest grows with the square of this while the market-risk grows
+      linearly, so 50% captures most of the benefit with half the drawdown of
+      being fully invested.
+  rebalance_band_pct:
+    name: Rebalance band (%)
+    description: >-
+      How far a position may drift from its target (in percentage points of
+      the whole portfolio) before everything is traded back. Tighter bands
+      trade far more often for slightly more harvest; 1% is a good default,
+      below 0.5% you are mostly paying fees.
+  volatility_lookback_days:
+    name: Volatility lookback (days)
+    description: >-
+      Window used to measure each pair's volatility when choosing the basket.
+  reselect_days:
+    name: Re-select every (days)
+    description: >-
+      How often the basket is re-chosen from the market. Every re-selection
+      sells the assets that dropped out, so very short values cost fees.
+  min_volume_usdt:
+    name: Minimum 24h volume (USDT)
+    description: >-
+      Liquidity floor for basket candidates. High-volatility assets tend to be
+      small caps; raise this if you see poor fills.
+  min_order_usdt:
+    name: Minimum order size (USDT)
+    description: >-
+      Legs smaller than this are skipped rather than sent to the exchange,
+      which would reject them as dust.
+  paper_wallet_usdt:
+    name: Paper wallet (USDT)
+    description: Starting balance for paper trading. No effect in live mode.
+  live_max_deployed_usdt:
+    name: Live deployment cap (USDT)
+    description: >-
+      Hard ceiling on real money at risk. Order sizes are computed from this
+      cap, so the exposure stays bounded even if the wallet grows. Start small.
+  check_interval_minutes:
+    name: Check interval (minutes)
+    description: >-
+      How often prices are fetched and drift is measured. This is not how
+      often it trades — the band decides that.
+  notifications_enabled:
+    name: Enable notifications
+    description: Send Home Assistant notifications on rebalances, mode changes and errors.
+  notify_service:
+    name: Notification service
+    description: >-
+      Home Assistant notify service, e.g. notify.mobile_app_your_phone.
+  log_level:
+    name: Log level
+    description: 'info for normal use; debug logs every price fetch and HTTP call.'
+network: {}
