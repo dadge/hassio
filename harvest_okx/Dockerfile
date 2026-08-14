@@ -2,9 +2,17 @@
 # the sibling add-on. This bot is a portfolio rebalancer, not a signal engine —
 # it needs ccxt and nothing else, so pulling in Freqtrade, TA-Lib, pandas and
 # numpy would cost hundreds of megabytes on a Raspberry Pi for no benefit.
-# python:3.12-slim is multi-arch, so one tag covers amd64/aarch64/armv7.
-ARG BUILD_FROM=python:3.12-slim
-FROM ${BUILD_FROM}
+# The tag is multi-arch, so one image covers amd64/aarch64/armv7.
+#
+# Pinned here rather than taken from a BUILD_FROM arg, which is deliberate. The
+# Supervisor always injects --build-arg BUILD_FROM, and it only honours a
+# build.yaml value matching ^([a-zA-Z\-\.:\d{}]+/)*?([\-\w{}]+)/([\-\w{}]+)...
+# -- an official image like `python:3.12-slim` has no namespace, fails that
+# regex, and is silently replaced by ghcr.io/home-assistant/base (Alpine), where
+# the apt-get below does not exist. That is exactly how the first install of
+# this add-on failed. Consuming the arg would reintroduce the same trap, so the
+# base is fixed and the injected value ignored.
+FROM docker.io/library/python:3.12-slim
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 

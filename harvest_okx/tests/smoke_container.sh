@@ -39,9 +39,17 @@ expect()    { if grep -qE "$2" <<<"$3"; then pass "$1"; else fail "$1" "$3"; fi;
 expect_no() { if grep -qE "$2" <<<"$3"; then fail "$1" "$3"; else pass "$1"; fi; }
 
 echo "[build]"
-dk build -q --build-arg BUILD_VERSION=0.1.0 --build-arg BUILD_ARCH=amd64 \
+# Built the way the Supervisor builds it, BUILD_FROM included. That arg is the
+# point: the Supervisor always injects it, falling back to the Alpine HA base
+# image whenever it cannot parse a base of its own, and the first install of
+# this add-on failed because the Dockerfile consumed that value and then ran
+# apt-get. Passing the hostile value here proves the Dockerfile ignores it.
+dk build -q \
+    --build-arg BUILD_VERSION=0.1.0 \
+    --build-arg BUILD_ARCH=amd64 \
+    --build-arg BUILD_FROM=ghcr.io/home-assistant/base:latest \
     -t "$IMAGE" "$(hp "$ADDON")" >/dev/null
-pass "image builds"
+pass "image builds with the Supervisor's injected BUILD_FROM"
 
 # ---------------------------------------------------------------- helpers --
 # Runs run.sh with a given options.json. The bot is replaced by a stub so the
