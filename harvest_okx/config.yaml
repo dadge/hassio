@@ -5,7 +5,7 @@ description: >-
   Constant-weight rebalancing bot for OKX spot. Earns the volatility harvest
   (sigma^2/8) instead of forecasting price, with an ingress control panel,
   paper trading by default and Home Assistant notifications
-url: https://github.com/YOUR_GH_USERNAME/freqtrade-ha
+url: https://github.com/dadge/hassio/tree/master/harvest_okx
 arch:
   - amd64
   - aarch64
