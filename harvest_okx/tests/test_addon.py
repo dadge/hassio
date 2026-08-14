@@ -12,6 +12,7 @@ Run:  python tests/test_harvest_addon.py
 from __future__ import annotations
 
 import json
+import subprocess
 import re
 import sys
 from pathlib import Path
@@ -97,6 +98,25 @@ def main() -> int:
           'fetch("/api' not in panel and "fetch('/api" not in panel)
     check("live mode is visually distinct", ".banner.live" in panel)
     check("explains how to switch to live", "i_understand_live_trading" in panel)
+
+    print("\n[executable bits]")
+    # CI invokes the shell tests by path, so a script committed without the
+    # executable bit dies with "Permission denied" and exit 126. On Windows
+    # core.filemode is false, so a local chmod never reaches the index and the
+    # problem is invisible until CI runs -- hence asking git, not the filesystem.
+    try:
+        out = subprocess.run(["git", "ls-files", "-s", "--", str(ADDON)],
+                             capture_output=True, text=True, cwd=REPO, timeout=30)
+        entries = [ln.split(maxsplit=3) for ln in out.stdout.splitlines() if ln.strip()]
+        modes = {e[3]: e[0] for e in entries if len(e) == 4}
+    except (OSError, subprocess.SubprocessError):
+        modes = {}
+    if not modes:
+        print("  (git unavailable or add-on not committed -- skipping)")
+    else:
+        for path, mode in sorted(modes.items()):
+            if path.endswith(".sh"):
+                check(f"{Path(path).name} is executable in git", mode == "100755", mode)
 
     print("\n[images]")
     # PNG dimensions come straight out of the IHDR chunk: 8-byte signature,
