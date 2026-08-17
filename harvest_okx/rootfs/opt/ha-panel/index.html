@@ -65,6 +65,7 @@
       <div class="kpi"><div class="label">Invested</div><div class="value" id="k-invested">–</div></div>
       <div class="kpi"><div class="label">Rebalances</div><div class="value" id="k-rebal">–</div></div>
       <div class="kpi"><div class="label">Fees paid</div><div class="value" id="k-fees">–</div></div>
+      <div class="kpi"><div class="label">Slippage</div><div class="value" id="k-slip">–</div></div>
     </div>
   </div>
 
@@ -220,6 +221,7 @@ async function refresh() {
   el("k-invested").textContent = fmt(s.invested_pct, 1) + "% / " + fmt(s.target_exposure_pct, 0) + "%";
   el("k-rebal").textContent = s.rebalances;
   el("k-fees").textContent = fmt(s.fees_paid) + " " + q;
+  el("k-slip").textContent = fmt(s.slippage_paid) + " " + q;
 
   drawChart(s.history);
   drawLegs(s.legs, (s.band_pct || 1) / 100);

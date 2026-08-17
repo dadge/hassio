@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0
+
+- **Paper fills now pay spread and market impact.** They previously filled at
+  the last traded price, modelling a market with no spread and infinite depth.
+  That flatters precisely the configuration this bot tends toward: the highest
+  sigma names are the thinnest, and a market order pays for that twice. With a
+  100,000 volume floor the error can exceed the harvest being measured, so a
+  paper run could show a profit live would not reproduce.
+- New `paper_slippage_model`: `orderbook` (default) walks the real book for the
+  size being traded, `fixed` applies `paper_slippage_pct`, `none` restores the
+  old behaviour. Live trading is unaffected -- real fills carry real slippage.
+- Slippage is tracked and displayed separately from fees, in the panel and the
+  status API, because fees are a known constant and slippage is the unknown.
+
 ## 0.4.0
 
 - **Any change to a selection setting now re-selects on the next check.**

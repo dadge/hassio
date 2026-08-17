@@ -82,8 +82,28 @@ that is actually predictable, and it is the part the harvest formula depends on.
 | `min_volume_usdt` | `5000000` | Liquidity floor. Raise it if you see slippage. |
 | `min_order_usdt` | `5` | Legs smaller than this are skipped. |
 | `paper_wallet_usdt` | `1000` | Starting paper balance. |
+| `paper_slippage_model` | `orderbook` | How paper fills are priced: `orderbook` (real spread + impact), `fixed`, or `none`. |
+| `paper_slippage_pct` | `0.1` | Percentage charged per fill when the model is `fixed`. |
 | `live_max_deployed_usdt` | `100` | **Hard cap on money at risk in live mode.** |
 | `check_interval_minutes` | `15` | How often drift is measured. |
+
+### Paper trading and slippage
+
+Paper mode used to fill at the last traded price, which assumes no spread and
+infinite depth. That is roughly harmless on deep books and badly misleading on
+thin ones — and this strategy deliberately seeks out the most volatile names,
+which are the thinnest. A paper run could show a profit that live could not
+reproduce.
+
+By default paper fills now **walk the real order book** for the size being
+traded, charging the actual spread and the impact of your own order, and the
+panel reports slippage separately from fees. Fees are a known constant; slippage
+is the unknown, and separating them is the point.
+
+If slippage is comparable to the harvest, that configuration is not viable at
+that size — lower `basket_size`, raise `min_volume_usdt`, or trade a deeper
+quote currency. Live trading is unaffected by these settings: real fills carry
+real slippage by construction.
 
 ### Choosing `quote_currency`
 

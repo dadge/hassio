@@ -88,6 +88,7 @@ class State:
             "events": [],            # newest first
             "rebalances": 0,
             "fees_paid": 0.0,
+            "slippage_paid": 0.0,
             "last_check": None,
             "last_error": None,
             "prices": {},
@@ -358,9 +359,55 @@ class Harvester:
                    f"{reason}: {executed} order(s). "
                    f"Equity {self.equity(self.prices_for(list(prices))):.2f} {self.quote}.")
 
+    def paper_fill_price(self, symbol: str, delta_units: float, price: float) -> float:
+        """Price a paper fill would really get, including spread and impact.
+
+        Filling paper trades at the last traded price models a market with no
+        spread and infinite depth, which flatters exactly the configuration this
+        bot drifts towards: the highest-volatility names are the thinnest, and a
+        market order pays for that twice, in the spread and in the impact of its
+        own size. On a 5 million volume floor the error is small; on a 100k floor
+        it can exceed the harvest being measured, so paper would show a profit
+        that live could not reproduce.
+
+        `orderbook` walks the real book for the actual size, which measures both
+        effects on the very pairs being traded. `fixed` applies a flat
+        percentage, `none` restores the old last-price behaviour.
+        """
+        model = self.cfg.get("paper_slippage_model", "orderbook")
+        if model == "none":
+            return price
+        if model == "fixed":
+            pct = float(self.cfg.get("paper_slippage_pct", 0.0)) / 100.0
+            return price * (1 + pct) if delta_units > 0 else price * (1 - pct)
+
+        side_key = "asks" if delta_units > 0 else "bids"
+        want = abs(delta_units)
+        try:
+            book = self.exchange.fetch_order_book(symbol, limit=50)
+            levels = [(float(p), float(a)) for p, a in (book.get(side_key) or []) if p and a]
+        except (ccxt.BaseError, ValueError, TypeError) as exc:
+            log.debug("order book for %s unavailable (%s); filling at last", symbol, exc)
+            return price
+        if not levels:
+            return price
+
+        spent = 0.0
+        remaining = want
+        for lvl_price, lvl_amount in levels:
+            take = min(remaining, lvl_amount)
+            spent += take * lvl_price
+            remaining -= take
+            if remaining <= 0:
+                break
+        if remaining > 0:
+            # Deeper than the visible book: charge the worst level seen rather
+            # than pretend the rest fills at the touch.
+            spent += remaining * levels[-1][0]
+        return spent / want
+
     def _execute(self, symbol: str, delta_units: float, price: float) -> bool:
         """Apply one leg. Paper adjusts the book; live sends a market order."""
-        notional = abs(delta_units) * price
         side = "buy" if delta_units > 0 else "sell"
 
         if self.live:
@@ -371,17 +418,25 @@ class Harvester:
                 # partially rebalanced book is still closer to target than none.
                 self.state.event("error", f"{side} {symbol} failed: {exc}")
                 return False
+            fill = price          # real fill; the exchange already charged the spread
+        else:
+            fill = self.paper_fill_price(symbol, delta_units, price)
 
+        notional = abs(delta_units) * fill
         with self.state.lock:
             d = self.state.data
             fee = notional * self.fee
+            # Tracked apart from fees: fees are a known constant, slippage is the
+            # unknown this whole exercise is meant to measure.
+            d["slippage_paid"] = d.get("slippage_paid", 0.0) + abs(delta_units) * abs(fill - price)
             d["holdings"][symbol] = d["holdings"].get(symbol, 0.0) + delta_units
-            d["cash"] -= delta_units * price + fee
+            d["cash"] -= delta_units * fill + fee
             d["fees_paid"] += fee
             if d["holdings"][symbol] <= 1e-12:
                 d["holdings"].pop(symbol, None)
-        log.info("%s %s %.8f @ %.8f (%.2f %s)", self.cfg["mode"], side,
-                 abs(delta_units), price, notional, self.quote)
+        slip_bps = (abs(fill - price) / price * 10_000) if price else 0.0
+        log.info("%s %s %.8f @ %.8f (%.2f %s, %.0f bps vs last)", self.cfg["mode"],
+                 side, abs(delta_units), fill, notional, self.quote, slip_bps)
         return True
 
     def sync_live_balances(self) -> None:
@@ -561,7 +616,9 @@ def make_handler(bot: Harvester, state: State, cfg: dict):
                         "band_pct": cfg["rebalance_band_pct"],
                         "legs": legs, "history": d["equity"][-500:],
                         "events": d["events"][:40], "rebalances": d["rebalances"],
-                        "fees_paid": d["fees_paid"], "last_check": d["last_check"],
+                        "fees_paid": d["fees_paid"],
+                        "slippage_paid": d.get("slippage_paid", 0.0),
+                        "last_check": d["last_check"],
                         "selected_at": d["selected_at"], "last_error": d["last_error"],
                         "version": os.environ.get("ADDON_VERSION", "dev"),
                     })
@@ -593,7 +650,7 @@ def make_handler(bot: Harvester, state: State, cfg: dict):
                     return self._json({"ok": False, "error": "not available in live mode"}, 400)
                 with state.lock:
                     state.data.update(cash=cfg["paper_wallet_usdt"], holdings={},
-                                      equity=[], rebalances=0, fees_paid=0.0,
+                                      equity=[], rebalances=0, fees_paid=0.0, slippage_paid=0.0,
                                       wallet_start=cfg["paper_wallet_usdt"])
                 state.event("control", "paper portfolio reset")
                 return self._json({"ok": True})

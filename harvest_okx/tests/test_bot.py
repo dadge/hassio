@@ -59,6 +59,20 @@ class FakeExchange:
         closes = self.series.get(symbol) or [self.prices[symbol]] * limit
         return [[0, c, c, c, c, 1.0] for c in closes[-limit:]]
 
+    def fetch_order_book(self, symbol, limit=50):
+        """A book with a spread and finite depth at each level.
+
+        Deliberately shallow: the point of the slippage model is that a large
+        order eats through levels, so a stub with one infinite level would let
+        a broken implementation pass.
+        """
+        px = self.prices[symbol]
+        spread = getattr(self, "spread", 0.002)          # 20 bps each side
+        depth = getattr(self, "depth", 1.0)              # units per level
+        asks = [(px * (1 + spread) * (1 + 0.001 * i), depth) for i in range(20)]
+        bids = [(px * (1 - spread) * (1 - 0.001 * i), depth) for i in range(20)]
+        return {"asks": asks, "bids": bids}
+
     def fetch_balance(self):
         return {}
 
@@ -87,7 +101,11 @@ def base_cfg(**over):
            "min_volume_usdt": 0.0, "min_order_usdt": 5.0,
            "paper_wallet_usdt": 1000.0, "live_max_deployed_usdt": 100.0,
            "check_interval_minutes": 15, "notifications_enabled": False,
-           "notify_service": "notify.x", "log_level": "info"}
+           "notify_service": "notify.x", "log_level": "info",
+           # Not the shipped default, which is "orderbook". These fixtures assert
+           # exact weights and exact fee arithmetic, and a spread is a second
+           # variable in those sums; the slippage test opts back in explicitly.
+           "paper_slippage_model": "none", "paper_slippage_pct": 0.0}
     cfg.update(over)
     return cfg
 
@@ -198,6 +216,46 @@ def test_quote_currency_is_honoured(mod):
     check("changing the band alone does not re-select",
           b2.state.data.get("selection_key") == key_before,
           f"{key_before} -> {b2.state.data.get('selection_key')}")
+
+
+def test_paper_slippage(mod):
+    print("\n[slippage] paper fills pay the spread and their own impact")
+    prices = {"A/USDT": 100.0}
+    cfg = base_cfg(basket_size=1, paper_slippage_model="orderbook")
+    bot, state = new_bot(mod, cfg, prices)
+
+    buy = bot.paper_fill_price("A/USDT", 0.5, 100.0)     # inside the first level
+    sell = bot.paper_fill_price("A/USDT", -0.5, 100.0)
+    check("a buy fills above last", buy > 100.0, f"{buy}")
+    check("a sell fills below last", sell < 100.0, f"{sell}")
+
+    # 10 units against 1 unit per level must walk the book and cost more than
+    # a small order, which is the impact term a flat percentage cannot express.
+    big = bot.paper_fill_price("A/USDT", 10.0, 100.0)
+    check("a larger order fills worse than a small one", big > buy, f"{big} vs {buy}")
+
+    cfg2 = base_cfg(basket_size=1, paper_slippage_model="fixed", paper_slippage_pct=1.0)
+    b2, _ = new_bot(mod, cfg2, prices)
+    check("fixed model charges the configured percentage",
+          abs(b2.paper_fill_price("A/USDT", 1.0, 100.0) - 101.0) < 1e-9,
+          str(b2.paper_fill_price("A/USDT", 1.0, 100.0)))
+
+    cfg3 = base_cfg(basket_size=1, paper_slippage_model="none")
+    b3, _ = new_bot(mod, cfg3, prices)
+    check("none restores last-price fills",
+          b3.paper_fill_price("A/USDT", 1.0, 100.0) == 100.0, "")
+
+    # And it must actually be charged, not merely computed.
+    state.data["basket"] = ["A/USDT"]
+    before = bot.equity(prices)
+    bot.rebalance(prices, "initial")
+    after = bot.equity(prices)
+    slip = state.data["slippage_paid"]
+    fees = state.data["fees_paid"]
+    check("slippage is recorded", slip > 0, f"{slip}")
+    check("equity falls by fees plus slippage",
+          abs((before - after) - (fees + slip)) < 1e-6,
+          f"drop={(before - after):.6f} fees={fees:.6f} slip={slip:.6f}")
 
 
 def test_rebalance_hits_target(mod):
@@ -348,6 +406,7 @@ def main() -> int:
         mod = load_bot(tmp)
         test_selection_ranks_by_volatility(mod)
         test_quote_currency_is_honoured(mod)
+        test_paper_slippage(mod)
         test_rebalance_hits_target(mod)
         test_accounting_conserves_value(mod)
         test_band_controls_trading(mod)

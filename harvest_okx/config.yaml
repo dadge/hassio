@@ -1,5 +1,5 @@
 name: OKX Volatility Harvester
-version: "0.4.0"
+version: "0.5.0"
 slug: harvest_okx
 description: >-
   Constant-weight rebalancing bot for OKX spot. Earns the volatility harvest
@@ -31,6 +31,8 @@ options:
   min_volume_usdt: 5000000.0
   min_order_usdt: 5.0
   paper_wallet_usdt: 1000.0
+  paper_slippage_model: orderbook
+  paper_slippage_pct: 0.1
   live_max_deployed_usdt: 100.0
   check_interval_minutes: 15
   notifications_enabled: true
@@ -62,6 +64,9 @@ schema:
   min_volume_usdt: float(0,)
   min_order_usdt: float(1,)
   paper_wallet_usdt: float(50,)
+  # Paper only. Live fills carry real slippage by construction.
+  paper_slippage_model: list(orderbook|fixed|none)
+  paper_slippage_pct: float(0,10)
   live_max_deployed_usdt: float(10,)
   check_interval_minutes: int(1,1440)
   notifications_enabled: bool

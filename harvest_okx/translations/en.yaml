@@ -77,6 +77,20 @@ configuration:
   paper_wallet_usdt:
     name: Paper wallet (USDT)
     description: Starting balance for paper trading, in the selected quote currency. No effect in live mode.
+  paper_slippage_model:
+    name: Paper slippage model
+    description: >-
+      How paper fills are priced. 'orderbook' walks the real order book for the
+      size being traded, charging the actual spread and the impact of your own
+      order — the honest choice, and the only one that tells you whether a
+      thin-market basket is viable. 'fixed' applies the flat percentage below.
+      'none' fills at the last traded price, which assumes no spread and
+      infinite depth and will flatter illiquid pairs. Live trading is unaffected.
+  paper_slippage_pct:
+    name: Paper slippage (%)
+    description: >-
+      Percentage charged against each paper fill when the model is 'fixed'.
+      Ignored otherwise.
   live_max_deployed_usdt:
     name: Live deployment cap (USDT)
     description: >-

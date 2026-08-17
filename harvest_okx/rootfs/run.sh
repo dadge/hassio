@@ -101,7 +101,8 @@ jq '{
       okx_api_key, okx_api_secret, okx_api_passphrase,
       basket_size, target_exposure_pct, rebalance_band_pct,
       volatility_lookback_days, reselect_days, min_volume_usdt, min_order_usdt,
-      paper_wallet_usdt, live_max_deployed_usdt, check_interval_minutes,
+      paper_wallet_usdt, paper_slippage_model, paper_slippage_pct,
+      live_max_deployed_usdt, check_interval_minutes,
       notifications_enabled, notify_service, log_level
     }' --arg mode "$MODE" "$OPTIONS_FILE" > "$RUNTIME_FILE"
 chmod 600 "$RUNTIME_FILE"
