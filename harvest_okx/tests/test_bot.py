@@ -16,6 +16,7 @@ import json
 import math
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 ADDON = Path(__file__).resolve().parent.parent
@@ -145,6 +146,26 @@ def test_quote_currency_is_honoured(mod):
 
     bot, _ = new_bot(mod, base_cfg(okx_environment="myokx"), prices, series)
     check("myokx alone does not change the quote currency", bot.quote == "USDT", bot.quote)
+
+    # Switching the currency on a running book must take effect immediately.
+    # Waiting for the scheduled re-selection leaves the panel reporting the new
+    # currency over a book still held in the old one -- exactly what happened on
+    # a live instance after this option was added.
+    bot, state = new_bot(mod, base_cfg(basket_size=2, quote_currency="USDC"), prices, series)
+    state.data["basket"] = ["AAA/USDT", "BBB/USDT"]     # selected under USDT
+    # Selected just now, so the scheduled re-selection is NOT due: without the
+    # currency check the basket would survive untouched. An old timestamp would
+    # make this pass on the schedule alone and test nothing.
+    state.data["selected_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    bot.rebalance({s: prices[s] for s in state.data["basket"]}, "seed")
+    bot.tick()
+    check("switching quote currency re-selects at once",
+          bool(state.data["basket"])
+          and all(s.endswith("/USDC") for s in state.data["basket"]),
+          f"basket={state.data['basket']}")
+    check("the old quote's legs are liquidated",
+          not any(s.endswith("/USDT") for s in state.data["holdings"]),
+          f"holdings={list(state.data['holdings'])}")
 
 
 def test_rebalance_hits_target(mod):

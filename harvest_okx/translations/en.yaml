@@ -44,7 +44,7 @@ configuration:
   target_exposure_pct:
     name: Target exposure (%)
     description: >-
-      Percentage of the wallet held in crypto; the rest stays in USDT. The
+      Percentage of the wallet held in crypto; the rest stays in the quote currency. The
       harvest grows with the square of this while the market-risk grows
       linearly, so 50% captures most of the benefit with half the drawdown of
       being fully invested.
@@ -67,7 +67,7 @@ configuration:
   min_volume_usdt:
     name: Minimum 24h volume (USDT)
     description: >-
-      Liquidity floor for basket candidates. High-volatility assets tend to be
+      Liquidity floor for basket candidates, in the selected quote currency. High-volatility assets tend to be
       small caps; raise this if you see poor fills.
   min_order_usdt:
     name: Minimum order size (USDT)
@@ -76,7 +76,7 @@ configuration:
       which would reject them as dust.
   paper_wallet_usdt:
     name: Paper wallet (USDT)
-    description: Starting balance for paper trading. No effect in live mode.
+    description: Starting balance for paper trading, in the selected quote currency. No effect in live mode.
   live_max_deployed_usdt:
     name: Live deployment cap (USDT)
     description: >-

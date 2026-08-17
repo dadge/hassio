@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0
+
+- **Changing `quote_currency` now takes effect immediately.** It previously
+  applied only at the next scheduled re-selection, so for up to `reselect_days`
+  the panel reported the new currency while the bot still held and traded the
+  old one -- observed on a live instance, which sat on a USDT basket after being
+  switched to USDC. Any leg not quoted in the configured currency now forces a
+  re-selection on the next check, and the old legs are liquidated.
+- Option descriptions that predated the setting no longer say "USDT" where they
+  mean the selected quote currency.
+
+  Switching currency on a **live** book sells the old legs into the old quote
+  currency, leaving that balance outside the bot's cash leg. Move or convert it
+  yourself; the bot will not touch it.
+
 ## 0.2.0
 
 - **New option `quote_currency` (`USDT` or `USDC`).** The quote currency was

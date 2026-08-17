@@ -393,6 +393,19 @@ class Harvester:
             age = (now - datetime.fromisoformat(d["selected_at"])).days
             due = age >= int(self.cfg["reselect_days"])
 
+        # A basket quoted in something other than the configured currency has to
+        # go now, not at the next scheduled re-selection. Otherwise changing
+        # quote_currency appears to do nothing for up to reselect_days while the
+        # panel cheerfully reports the new currency over the old book.
+        stale_quote = [s for s in d["basket"] if not s.endswith("/" + self.quote)]
+        if stale_quote:
+            log.info("Re-selecting: %d leg(s) not quoted in %s (%s)",
+                     len(stale_quote), self.quote,
+                     ", ".join(s.split("/")[0] for s in stale_quote[:5]))
+            self.state.event("select", f"quote currency is now {self.quote}; "
+                                       f"re-selecting the basket")
+            due = True
+
         if due or not d["basket"]:
             picks = self.select_basket()
             if picks:
