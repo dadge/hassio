@@ -167,6 +167,38 @@ def test_quote_currency_is_honoured(mod):
           not any(s.endswith("/USDT") for s in state.data["holdings"]),
           f"holdings={list(state.data['holdings'])}")
 
+    # Same trap, different setting: a change to any input of the selection must
+    # re-select now, while a change that only affects trading must not.
+    def settled(**over):
+        b, st = new_bot(mod, base_cfg(basket_size=2, **over), prices, series)
+        b.tick()                                   # selects and stores the key
+        st.data["selected_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        return b, st
+
+    # 15 days, not 60: a 60-day lookback wants 300 bars and these fixtures are
+    # 200 long, so every candidate would be skipped for want of history and
+    # nothing would be selected to compare.
+    for option, value in (("min_volume_usdt", 1.0), ("basket_size", 3),
+                          ("volatility_lookback_days", 15)):
+        _, st = settled()
+        key_before = st.data.get("selection_key")
+        over = {"basket_size": 2, option: value}   # option may BE basket_size
+        b2, _ = new_bot(mod, base_cfg(**over), prices, series)
+        b2.state.data.update(st.data)              # same book, one option changed
+        b2.tick()
+        check(f"changing {option} re-selects immediately",
+              b2.state.data.get("selection_key") not in (None, key_before),
+              f"key stayed {key_before}")
+
+    _, st = settled()
+    key_before = st.data.get("selection_key")
+    b2, _ = new_bot(mod, base_cfg(basket_size=2, rebalance_band_pct=5.0), prices, series)
+    b2.state.data.update(st.data)
+    b2.tick()
+    check("changing the band alone does not re-select",
+          b2.state.data.get("selection_key") == key_before,
+          f"{key_before} -> {b2.state.data.get('selection_key')}")
+
 
 def test_rebalance_hits_target(mod):
     print("\n[rebalance] every leg lands on its target weight")

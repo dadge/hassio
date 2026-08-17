@@ -183,6 +183,21 @@ class Harvester:
         return ex
 
     # ------------------------------------------------------------ universe --
+    def selection_key(self) -> str:
+        """Fingerprint of every setting that decides which pairs are held.
+
+        Compared against the value stored when the basket was chosen, so a
+        change to any of them re-selects immediately. Deliberately excludes
+        settings that only affect trading of an existing basket (the band, the
+        check interval, exposure), which must not cost a full re-selection.
+        """
+        return "|".join(str(x) for x in (
+            self.quote,
+            int(self.cfg["basket_size"]),
+            float(self.cfg["min_volume_usdt"]),
+            int(self.cfg["volatility_lookback_days"]),
+        ))
+
     def select_basket(self) -> list[str]:
         """Rank liquid spot pairs by trailing volatility and take the top N.
 
@@ -404,23 +419,25 @@ class Harvester:
             age = (now - datetime.fromisoformat(d["selected_at"])).days
             due = age >= int(self.cfg["reselect_days"])
 
-        # A basket quoted in something other than the configured currency has to
-        # go now, not at the next scheduled re-selection. Otherwise changing
-        # quote_currency appears to do nothing for up to reselect_days while the
-        # panel cheerfully reports the new currency over the old book.
-        stale_quote = [s for s in d["basket"] if not s.endswith("/" + self.quote)]
-        if stale_quote:
-            log.info("Re-selecting: %d leg(s) not quoted in %s (%s)",
-                     len(stale_quote), self.quote,
-                     ", ".join(s.split("/")[0] for s in stale_quote[:5]))
-            self.state.event("select", f"quote currency is now {self.quote}; "
-                                       f"re-selecting the basket")
+        # Any change to a setting that decides WHICH pairs are held must take
+        # effect on the next check, not at the next scheduled re-selection up to
+        # reselect_days away. Otherwise the configuration silently describes a
+        # book the bot is not running -- as happened when quote_currency was
+        # switched to USDC and a USDT basket carried on trading for three days.
+        # Keyed rather than special-cased per option, because the same trap is
+        # waiting behind min_volume, basket_size and the lookback.
+        key = self.selection_key()
+        if d.get("selection_key") != key:
+            was = d.get("selection_key")
+            log.info("Selection settings changed (%s -> %s); re-selecting", was, key)
+            self.state.event("select", "selection settings changed; re-selecting the basket")
             due = True
 
         if due or not d["basket"]:
             picks = self.select_basket()
             if picks:
                 with self.state.lock:
+                    d["selection_key"] = key
                     d["basket"] = picks
                     d["selected_at"] = now.isoformat(timespec="seconds")
                 self.state.event("select", f"basket: {', '.join(s.split('/')[0] for s in picks)}")

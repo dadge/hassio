@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0
+
+- **Any change to a selection setting now re-selects on the next check.**
+  0.3.0 fixed this for `quote_currency` alone, but the same trap sat behind
+  `min_volume_usdt`, `basket_size` and `volatility_lookback_days`: change one
+  and nothing happened until the scheduled re-selection, up to `reselect_days`
+  away, while the configuration described a book the bot was not running. The
+  settings that decide *which* pairs are held are now fingerprinted with the
+  basket and compared each check. Settings that only affect trading of an
+  existing basket -- the band, exposure, the check interval -- deliberately do
+  not trigger one, since a re-selection costs fees.
+
 ## 0.3.1
 
 - The bot now warns, in the log and the panel's activity list, when fewer pairs
