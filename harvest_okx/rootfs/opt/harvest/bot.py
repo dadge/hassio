@@ -235,10 +235,21 @@ class Harvester:
                 scored.append((sigma, sym))
 
         scored.sort(reverse=True)
-        picks = [s for _, s in scored[: int(self.cfg["basket_size"])]]
+        wanted = int(self.cfg["basket_size"])
+        picks = [s for _, s in scored[:wanted]]
         if scored:
             log.info("Top sigma: %s", ", ".join(
                 f"{s}={v:.2f}" for v, s in scored[: len(picks)]))
+        if len(picks) < wanted:
+            # Holding fewer legs than asked for is not a detail: with too few
+            # candidates the ranking stops selecting anything and the bot just
+            # holds whatever qualified, which on a thin quote currency means the
+            # least volatile majors -- the opposite of the intent.
+            msg = (f"only {len(picks)} of {wanted} legs available in {self.quote} "
+                   f"above {self.cfg['min_volume_usdt']:.0f} volume; the basket is "
+                   f"not being selected, merely filled")
+            log.warning("%s", msg)
+            self.state.event("warning", msg)
         return picks
 
     # ------------------------------------------------------------- pricing --

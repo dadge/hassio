@@ -1,5 +1,5 @@
 name: OKX Volatility Harvester
-version: "0.3.0"
+version: "0.3.1"
 slug: harvest_okx
 description: >-
   Constant-weight rebalancing bot for OKX spot. Earns the volatility harvest

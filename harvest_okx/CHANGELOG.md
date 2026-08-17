@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1
+
+- The bot now warns, in the log and the panel's activity list, when fewer pairs
+  qualify than `basket_size` asks for. Switching a live instance to USDC left it
+  holding two legs out of ten with no indication anything was wrong: OKX lists
+  264 USDC spot pairs but only 3 above a 5,000,000 volume floor, so the ranking
+  had nothing to choose between and the basket was filled rather than selected.
+- The dry-run startup banner names the configured quote currency instead of
+  always printing USDT.
+
 ## 0.3.0
 
 - **Changing `quote_currency` now takes effect immediately.** It previously

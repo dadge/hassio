@@ -120,7 +120,7 @@ if [[ "$MODE" == "live" ]]; then
     info "  deployment cap:  $(opt live_max_deployed_usdt) USDT"
     info "=================================================================="
 else
-    info "Starting in DRY-RUN mode (paper wallet: $(opt paper_wallet_usdt) USDT). No real orders will be placed."
+    info "Starting in DRY-RUN mode (paper wallet: $(opt paper_wallet_usdt) $(opt quote_currency)). No real orders will be placed."
 fi
 
 info "Launching harvester..."
