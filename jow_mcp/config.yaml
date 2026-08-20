@@ -1,0 +1,32 @@
+name: Jow MCP
+version: "0.1.0"
+slug: jow_mcp
+description: >-
+  Read Jow recipes and meal plans over the Model Context Protocol, linked to
+  your Jow account, so Claude can search and discuss your Jow. Auto-refreshes
+  its access token; links via Jow's device-pairing flow (no password stored).
+url: https://github.com/dadge/hassio/tree/master/jow_mcp
+arch:
+  - amd64
+  - aarch64
+  - armv7
+startup: application
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: MCP HTTP endpoint — Claude connects to http://<host>:8099/mcp
+options:
+  pairing_token: ""
+  server_token: ""
+  web_version: "5.0.0"
+  log_level: info
+schema:
+  # One-shot pairing token (v1:...) minted from a logged-in jow.fr session.
+  # Prefer POSTing it to /pair (it expires ~60s after minting). See DOCS.
+  pairing_token: password?
+  # If set, clients must send `Authorization: Bearer <server_token>` to reach
+  # /mcp. Leave empty to allow any client that can reach the port.
+  server_token: password?
+  # Sent as x-jow-web-version; bump if Jow starts rejecting the default.
+  web_version: str?
+  log_level: list(trace|debug|info|notice|warning|error|fatal)?

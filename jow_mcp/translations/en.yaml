@@ -1,0 +1,25 @@
+---
+configuration:
+  pairing_token:
+    name: Pairing token
+    description: >-
+      One-shot token (v1:...) minted from a logged-in jow.fr session to link
+      this add-on to your Jow account. It expires ~60 seconds after minting, so
+      prefer POSTing it to the /pair route instead. Only used while no
+      credentials are stored yet. See the Documentation tab.
+  server_token:
+    name: Server token
+    description: >-
+      Optional shared secret. If set, MCP clients (Claude) must send
+      'Authorization: Bearer <server_token>' to reach the /mcp endpoint. Leave
+      empty to allow any client that can reach the port. The /health route stays
+      open either way.
+  web_version:
+    name: Jow web version
+    description: >-
+      Value sent as the x-jow-web-version header on API calls. Only change it if
+      Jow starts rejecting requests with the default.
+  log_level:
+    name: Log level
+    description: >-
+      Verbosity of the add-on log.
