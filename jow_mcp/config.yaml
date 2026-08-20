@@ -1,5 +1,5 @@
 name: Jow MCP
-version: "0.1.0"
+version: "0.1.1"
 slug: jow_mcp
 description: >-
   Read Jow recipes and meal plans over the Model Context Protocol, linked to

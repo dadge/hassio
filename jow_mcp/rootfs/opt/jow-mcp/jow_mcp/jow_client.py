@@ -331,33 +331,25 @@ class JowClient:
     async def featured_recipes(self) -> Any:
         return await self.request("GET", "/recipes/featured", auth=False)
 
-    async def search_recipes(self, query: str, limit: int = 20, skip: int = 0) -> Any:
-        """POST /recipes/search. Body shape learned/cached on first success."""
-        learned = self.tokens.data.get("search_shape")
-        shapes = [
-            {"name": "query", "json": {"query": query, "limit": limit, "skip": skip}},
-            {"name": "q", "json": {"q": query, "limit": limit, "skip": skip}},
-            {"name": "text", "json": {"text": query, "limit": limit, "offset": skip}},
-            {"name": "search", "json": {"search": query, "count": limit}},
-        ]
-        if learned:
-            shapes.sort(key=lambda s: 0 if s["name"] == learned else 1)
-        last: Any = None
-        for shape in shapes:
-            try:
-                result = await self.request(
-                    "POST", "/recipes/search", json_body=shape["json"]
-                )
-            except JowAPIError as exc:
-                last = exc
-                if exc.status in (400, 422):  # wrong body shape; try next
-                    continue
-                raise
-            if self.tokens.data.get("search_shape") != shape["name"]:
-                self.tokens.data["search_shape"] = shape["name"]
-                self.tokens.save()
-            return result
-        raise last or JowAPIError(400, "no search shape matched", "/recipes/search")
+    async def search_recipes(self, query: str, limit: int = 20) -> Any:
+        """Public recipe text search.
+
+        Verified against the live API: the web app calls
+        ``POST /recipe/quicksearch`` with the query in the *URL query string*
+        (not the body) plus a ``supportsPaginatedSearch`` flag. The response is
+        a ``{content: [...], links: {...}}`` envelope; we return ``content``.
+        """
+        params = {
+            "supportsPaginatedSearch": "true",
+            "query": query,
+            "limit": limit,
+        }
+        result = await self.request(
+            "POST", "/recipe/quicksearch", auth=False, params=params, json_body={}
+        )
+        if isinstance(result, dict) and "content" in result:
+            return result["content"]
+        return result
 
     async def get_recipe(self, recipe_id: str) -> Any:
         return await self.request("GET", f"/recipe/{recipe_id}", auth=False)
@@ -365,10 +357,9 @@ class JowClient:
     async def recipe_feedbacks(self, recipe_id: str) -> Any:
         return await self.request("GET", f"/recipe/{recipe_id}/feedbacks", auth=False)
 
-    async def quicksearch(self, query: str) -> Any:
-        return await self.request(
-            "GET", "/recipe/quicksearch", auth=False, params={"query": query}
-        )
+    async def quicksearch(self, query: str, limit: int = 8) -> Any:
+        """Same public endpoint as search_recipes, smaller default limit."""
+        return await self.search_recipes(query, limit=limit)
 
     async def recommendations(self) -> Any:
         return await self.request("GET", "/recipes/reco/main")

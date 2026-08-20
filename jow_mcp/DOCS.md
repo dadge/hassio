@@ -1,75 +1,33 @@
 # Jow MCP — Documentation
 
-An MCP server exposing your Jow recipes and meal plans to Claude. It links to
-your account through Jow's device-pairing mechanism and refreshes its token
-automatically.
+An MCP server exposing Jow recipes to Claude. **Recipe search and reads work
+out of the box, no login.** Account-specific data (your menu, collections,
+recommendations) needs a Jow access token, which — as explained below — jow.fr
+does not make available to a web client, so those tools are best-effort.
 
 ## Tools exposed
 
 Over streamable HTTP at `/mcp`:
 
-| Tool | Account? | Description |
+| Tool | Login? | Description |
 |------|:--:|------|
-| `jow_auth_status` | – | Is the server linked? What's the user id? |
-| `jow_pair` | – | Link the server with a pairing token |
-| `jow_featured_recipes` | no | Front-page featured recipes |
-| `jow_search_recipes` | yes | Full-text recipe search |
-| `jow_quicksearch` | no | Lightweight autocomplete-style search |
-| `jow_get_recipe` | no | One recipe's full detail by id |
+| `jow_auth_status` | – | Is an account linked? Reminds you what needs it |
+| `jow_search_recipes` | **no** | Full-text recipe search (query, limit) |
+| `jow_quicksearch` | **no** | Same, fewer results |
+| `jow_get_recipe` | **no** | One recipe's full detail (ingredients, steps) by id |
+| `jow_featured_recipes` | **no** | Front-page featured recipes |
+| `jow_search_ingredients` | **no** | Ingredient catalogue search |
 | `jow_recipe_recommendations` | yes | Personalised recommendations |
-| `jow_search_ingredients` | no | Ingredient catalogue search |
-| `jow_get_menu` | yes | Your current weekly menu / meal plan |
+| `jow_get_menu` | yes | Your weekly menu / meal plan |
 | `jow_get_menu_by_id` | yes | A specific menu by id |
 | `jow_menu_basic_ingredients` | yes | Pantry-staples list |
+| `jow_pair` | – | Attempt to link with a token pair (see below) |
 
 Plain HTTP routes: `GET /health`, `POST /pair`.
 
-## Configuration
-
-| Option | Description |
-|--------|------|
-| `pairing_token` | One-shot pairing token (`v1:...`). **Prefer the `/pair` route** — the token expires ~60 s after minting, too fast for a config save + restart. Only used while `/data` has no stored credentials. |
-| `server_token` | If set, clients must send `Authorization: Bearer <server_token>` to reach `/mcp`. Leave empty to allow any client that can reach the port. `/health` stays open. |
-| `web_version` | Sent as `x-jow-web-version`. Bump only if Jow starts rejecting the default. |
-| `log_level` | Add-on log verbosity. |
-
-## Linking to your Jow account
-
-Jow's real login is phone/OTP based and can't be automated headlessly, so this
-add-on uses Jow's **device-pairing** flow instead: a logged-in browser mints a
-short-lived token, and the add-on exchanges it for its own credentials.
-
-### 1. Mint a pairing token
-
-Log in at <https://jow.fr>, open the browser devtools **Console**, and run:
-
-```js
-fetch('https://api.jow.fr/public/auth/pairing/code', {
-  credentials: 'include',
-  headers: { 'x-jow-web-version': '5.0.0' },
-}).then(r => r.json()).then(d => console.log('PAIRING TOKEN:\n' + d.pairingToken));
-```
-
-Copy the printed `v1:...` value.
-
-### 2. Hand it to the add-on (within ~60 s)
-
-Start the add-on, then:
-
-```bash
-curl -X POST http://<HA-IP>:8099/pair \
-  -H 'content-type: application/json' \
-  -d '{"pairingToken":"v1:PASTE_HERE"}'
-```
-
-If you set a `server_token`, add `-H "Authorization: Bearer <server_token>"`.
-
-A `{"linked": true, "user_id": "..."}` response means you're done. Check any
-time with `curl http://<HA-IP>:8099/health`.
-
-Credentials are stored in `/data/jow_tokens.json` and reused after restarts; the
-add-on refreshes the access token automatically when it nears expiry or a call
-returns `401`.
+The five **no-login** tools cover the main use case: search Jow, pull a recipe's
+full ingredients and steps, and discuss them with Claude. They work the moment
+the add-on starts.
 
 ## Connect Claude
 
@@ -81,7 +39,7 @@ The endpoint is `http://<HA-IP>:8099/mcp`.
 claude mcp add --transport http jow http://<HA-IP>:8099/mcp
 ```
 
-With a `server_token`:
+With a `server_token` set:
 
 ```bash
 claude mcp add --transport http jow http://<HA-IP>:8099/mcp \
@@ -90,28 +48,65 @@ claude mcp add --transport http jow http://<HA-IP>:8099/mcp \
 
 **claude.ai / Claude Desktop** — add a **Custom Connector** for the same `/mcp`
 URL (with the `Authorization` header if you set a `server_token`). Claude must
-be able to reach the endpoint; for access from outside your LAN put it behind
-your existing reverse proxy or VPN rather than exposing the port to the internet.
+reach the endpoint; for access beyond your LAN, put it behind your existing
+reverse proxy or VPN rather than exposing the port to the internet.
 
-Then ask, e.g. *"search my Jow for a quick chicken recipe"* or *"what's on my Jow
-menu this week?"*.
+Then ask, e.g. *"search Jow for a quick chicken curry and show me the recipe"*.
+
+Sanity-check first:
+
+```bash
+Invoke-RestMethod "http://<HA-IP>:8099/health"   # PowerShell
+curl.exe http://<HA-IP>:8099/health              # curl
+```
+
+## Configuration
+
+| Option | Description |
+|--------|------|
+| `server_token` | If set, clients must send `Authorization: Bearer <server_token>` to reach `/mcp`. `/health` stays open. Recommended so nothing else on your LAN can use the endpoint. |
+| `web_version` | Sent as `x-jow-web-version`. Change only if Jow starts rejecting the default. |
+| `log_level` | Add-on log verbosity. |
+| `pairing_token` | Only relevant if account linking becomes possible for you — see below. |
+
+## About account linking (the honest version)
+
+The original goal was to link the add-on to your Jow account so it could read
+your menu and collections. After reverse-engineering the API, that turns out
+**not to be reachable from the web**:
+
+- Jow's data endpoints authenticate with a **Bearer access token**, not a
+  cookie.
+- The jow.fr web app keeps that token **server-side / obfuscated** and never
+  sends it from the browser on normal pages, so it can't be copied from
+  DevTools.
+- Jow's device-pairing flow (`/auth/pairing/code` → `/auth/clone`) needs an
+  authenticated **`/auth/attach`** step to authorise the new device, and that
+  step requires the very Bearer token above. jow.fr exposes no web UI to
+  perform it.
+
+So there is no web-only way to hand the add-on your account credentials. **If**
+you can obtain a Jow **access token + refresh token** by other means (e.g. by
+intercepting the Jow mobile app's traffic against `api.jow.fr/public`), you can
+inject them:
+
+```bash
+curl.exe -X POST http://<HA-IP>:8099/pair \
+  -H "content-type: application/json" \
+  --data-raw '{\"accessToken\":\"...\",\"refreshToken\":\"...\"}'
+```
+
+The add-on will store them and auto-refresh. Without them, the four account
+tools return a clear "needs a linked account" error and everything else works.
+
+> Windows PowerShell note: `curl` there is an alias for `Invoke-WebRequest` and
+> mangles JSON. Use `curl.exe` with escaped quotes as above, or
+> `Invoke-RestMethod -Uri ... -Method Post -ContentType application/json -Body '...'`.
 
 ## Robustness note
 
-The featured-recipes read and the pairing-token *mint* are verified against the
-live API. The `/auth/clone` exchange and the token-refresh request shapes could
-not be verified from a browser (CORS blocks them; they run fine server-side), so
-the client tries a small ordered set of candidate request shapes for pairing,
-refresh and search and **persists whichever one works** into the token file. If
-pairing or refresh fails, the add-on log names the strategy it tried; the shapes
-live in `jow_client.py` (`_clone_strategies` / `_refresh_strategies`).
-
-## Troubleshooting
-
-- **`jow_search_recipes` etc. error with "needs a linked Jow account"** — run
-  `jow_auth_status` / `curl .../health`; if not linked, redo the pairing steps.
-- **Pairing returns an error** — the token likely expired (mint and `curl`
-  back-to-back), or the exchange shape changed (check the log).
-- **Claude can't connect** — confirm the port is reachable
-  (`curl http://<HA-IP>:8099/health`) and that the `Authorization` header matches
-  `server_token` if you set one.
+Recipe search, get-recipe, featured and ingredient search are verified against
+the live public API. The token-refresh and `/auth/clone` request shapes could
+not be verified (they're not reachable without a token), so the client tries a
+small ordered set of candidate shapes and persists whichever works, logging its
+choice. Adjust the strategy lists in `jow_client.py` if Jow changes them.

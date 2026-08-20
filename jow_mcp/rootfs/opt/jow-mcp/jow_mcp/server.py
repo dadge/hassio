@@ -48,9 +48,12 @@ async def jow_auth_status() -> dict[str, Any]:
         "api_base": _config.api_base,
         "note": (
             "Linked and ready." if _client.is_authenticated else
-            "Not linked. Generate a pairing token from a logged-in jow.fr "
-            "session and POST it to /pair, or set JOW_PAIRING_TOKEN."
+            "Not linked. Recipe search and reads work without linking. "
+            "Account features (your menu, collections, recommendations) need a "
+            "Jow access token, which jow.fr does not expose to the web — see "
+            "the add-on docs. If you have a token pair, POST it to /pair."
         ),
+        "public_tools_work_without_linking": True,
     }
 
 
@@ -75,14 +78,15 @@ async def jow_featured_recipes() -> Any:
 async def jow_search_recipes(query: str, limit: int = 20) -> Any:
     """Search Jow recipes by free text (e.g. 'poulet curry', 'gâteau chocolat').
 
-    Returns matching recipes with ids, titles, timings and ingredients.
+    Returns matching recipes with ids, titles, timings and ingredients. No
+    account required.
     """
     return _enrich(await _client.search_recipes(query, limit=limit))
 
 
 @mcp.tool()
 async def jow_quicksearch(query: str) -> Any:
-    """Fast lightweight recipe search (autocomplete-style). No account required."""
+    """Fast lightweight recipe search (fewer results). No account required."""
     return _enrich(await _client.quicksearch(query))
 
 
@@ -97,7 +101,8 @@ async def jow_get_recipe(recipe_id: str) -> Any:
 
 @mcp.tool()
 async def jow_recipe_recommendations() -> Any:
-    """Get personalised recipe recommendations for the linked account."""
+    """Personalised recommendations. Requires a linked account (see docs;
+    account linking may be unavailable via the web — errors cleanly if so)."""
     return _enrich(await _client.recommendations())
 
 
@@ -109,7 +114,8 @@ async def jow_search_ingredients(query: str) -> Any:
 
 @mcp.tool()
 async def jow_get_menu() -> Any:
-    """Get the linked account's current weekly menu / meal plan."""
+    """Your current weekly menu / meal plan. Requires a linked account (see
+    docs; account linking may be unavailable via the web — errors cleanly)."""
     return _enrich(await _client.get_menu())
 
 
@@ -159,10 +165,23 @@ async def pair_route(req: Request) -> JSONResponse:
         body = await req.json()
     except (ValueError, json.JSONDecodeError):
         body = {}
+
+    # Direct token injection: if you already hold an access token (and
+    # ideally a refresh token) obtained by other means, store it as-is.
+    access = (body.get("accessToken") or body.get("access_token") or "").strip()
+    if access:
+        refresh = (body.get("refreshToken") or body.get("refresh_token") or "").strip()
+        _client.tokens.set_tokens(access, refresh or None)
+        _client.tokens.data.pop("user_id", None)
+        _client.tokens.save()
+        return JSONResponse({"linked": True, "user_id": _client.user_id})
+
+    # Otherwise treat the input as a Jow pairing token to exchange.
     token = (body.get("pairingToken") or body.get("token") or "").strip()
     if not token:
         return JSONResponse(
-            {"error": "Provide a pairing token as {\"pairingToken\": \"v1:...\"}"},
+            {"error": "Provide either {\"accessToken\": \"...\", "
+                      "\"refreshToken\": \"...\"} or {\"pairingToken\": \"v1:...\"}"},
             status_code=400,
         )
     try:

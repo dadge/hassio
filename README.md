@@ -18,7 +18,7 @@ https://github.com/dadge/hassio
 | [OKX Volatility Harvester](./harvest_okx/) | Constant-weight rebalancing across the most volatile liquid OKX **spot** pairs. Earns the volatility harvest (`sigma²/8`) rather than forecasting price, with an ingress control panel and Home Assistant notifications. Paper trading by default. |
 | [binance-bot-dashboard](./binance-bot-dashboard/) | Dashboard for the Binance bot. |
 | [shairport_sync](./shairport_sync/) | AirPlay audio receiver. |
-| [Jow MCP](./jow_mcp/) | Read [Jow](https://jow.fr) recipes and meal plans over MCP, linked to your account, so Claude can search and discuss your Jow. Links via Jow's device-pairing flow (no password stored) and auto-refreshes its token. |
+| [Jow MCP](./jow_mcp/) | Search and read [Jow](https://jow.fr) recipes over MCP so Claude can find and discuss them. Recipe search, detail, featured and ingredient lookup work with no login. |
 
 The two trading add-ons take opposite approaches. `freqtrade_okx` predicts — it
 looks for dips likely to rebound. `harvest_okx` predicts nothing: it holds a
